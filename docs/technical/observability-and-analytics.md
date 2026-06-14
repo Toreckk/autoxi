@@ -121,6 +121,8 @@ Implement or stub:
 - `api_request_slow`
 - `client_error_captured`
 
+Runtime constants and exported event-name types should avoid phase-specific names. Use permanent names such as `ANALYTICS_EVENT_NAMES` and `AnalyticsEventName` even while the event list is still Phase 1-sized.
+
 ## Funnels
 
 Phase 1 Collection funnel:

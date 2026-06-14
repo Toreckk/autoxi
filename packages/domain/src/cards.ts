@@ -1,0 +1,313 @@
+import { z } from "zod";
+
+export const CARD_TIERS = [
+  "SQUAD_PLAYER",
+  "STARTER",
+  "KEY_PLAYER",
+  "STAR",
+  "WORLD_CLASS",
+  "HERO",
+  "ICON"
+] as const;
+
+export const VISIBLE_POSITIONS = [
+  "GK",
+  "CB",
+  "LB",
+  "RB",
+  "CDM",
+  "CM",
+  "CAM",
+  "LM",
+  "RM",
+  "LW",
+  "RW",
+  "ST"
+] as const;
+
+export const BROAD_LINES = ["GOALKEEPER", "DEFENDER", "MIDFIELDER", "FORWARD"] as const;
+
+export const CARD_ROLES = [
+  "Shot Stopper",
+  "Anchor",
+  "Wingback",
+  "Ball Winner",
+  "Tempo Setter",
+  "Creator",
+  "Wide Threat",
+  "Finisher"
+] as const;
+
+export const STAT_KEYS = [
+  "pace",
+  "shooting",
+  "passing",
+  "dribbling",
+  "defending",
+  "physical",
+  "goalkeeping"
+] as const;
+
+export const MATERIAL_KEYS = [
+  "matte-graphite",
+  "brushed-steel",
+  "emerald-composite",
+  "violet-phase",
+  "cobalt-gold",
+  "ruby-hero",
+  "black-pearl-icon",
+  "ivory-gold-icon"
+] as const;
+
+export const SORT_OPTIONS = [
+  "rating_desc",
+  "rating_asc",
+  "name_asc",
+  "name_desc",
+  "tier_desc",
+  "tier_asc",
+  "year_desc",
+  "year_asc",
+  "nationality_asc"
+] as const;
+
+export type CardTier = (typeof CARD_TIERS)[number];
+export type VisiblePosition = (typeof VISIBLE_POSITIONS)[number];
+export type BroadLine = (typeof BROAD_LINES)[number];
+export type CardRole = (typeof CARD_ROLES)[number];
+export type StatKey = (typeof STAT_KEYS)[number];
+export type MaterialKey = (typeof MATERIAL_KEYS)[number];
+export type SortOption = (typeof SORT_OPTIONS)[number];
+export type AnimationLevel = "none" | "subtle" | "medium" | "premium";
+
+export type CardTierConfig = {
+  code: CardTier;
+  label: string;
+  ratingMin: number;
+  ratingMax: number;
+  cost: number;
+  materialKey: MaterialKey;
+  animationLevel: AnimationLevel;
+  rank: number;
+};
+
+export const CARD_TIER_CONFIG_BY_CODE = {
+  SQUAD_PLAYER: {
+    code: "SQUAD_PLAYER",
+    label: "Squad Player",
+    ratingMin: 55,
+    ratingMax: 67,
+    cost: 1,
+    materialKey: "matte-graphite",
+    animationLevel: "none",
+    rank: 1
+  },
+  STARTER: {
+    code: "STARTER",
+    label: "Starter",
+    ratingMin: 68,
+    ratingMax: 74,
+    cost: 2,
+    materialKey: "brushed-steel",
+    animationLevel: "subtle",
+    rank: 2
+  },
+  KEY_PLAYER: {
+    code: "KEY_PLAYER",
+    label: "Key Player",
+    ratingMin: 75,
+    ratingMax: 80,
+    cost: 3,
+    materialKey: "emerald-composite",
+    animationLevel: "subtle",
+    rank: 3
+  },
+  STAR: {
+    code: "STAR",
+    label: "Star",
+    ratingMin: 81,
+    ratingMax: 86,
+    cost: 5,
+    materialKey: "violet-phase",
+    animationLevel: "medium",
+    rank: 4
+  },
+  WORLD_CLASS: {
+    code: "WORLD_CLASS",
+    label: "World Class",
+    ratingMin: 87,
+    ratingMax: 90,
+    cost: 7,
+    materialKey: "cobalt-gold",
+    animationLevel: "medium",
+    rank: 5
+  },
+  HERO: {
+    code: "HERO",
+    label: "Hero",
+    ratingMin: 91,
+    ratingMax: 94,
+    cost: 10,
+    materialKey: "ruby-hero",
+    animationLevel: "premium",
+    rank: 6
+  },
+  ICON: {
+    code: "ICON",
+    label: "Icon",
+    ratingMin: 95,
+    ratingMax: 99,
+    cost: 13,
+    materialKey: "black-pearl-icon",
+    animationLevel: "premium",
+    rank: 7
+  }
+} as const satisfies Record<CardTier, CardTierConfig>;
+
+export type PositionConfig = {
+  label: string;
+  broadLine: BroadLine;
+};
+
+export const POSITION_CONFIG_BY_CODE = {
+  GK: { label: "GK", broadLine: "GOALKEEPER" },
+  CB: { label: "CB", broadLine: "DEFENDER" },
+  LB: { label: "LB", broadLine: "DEFENDER" },
+  RB: { label: "RB", broadLine: "DEFENDER" },
+  CDM: { label: "CDM", broadLine: "MIDFIELDER" },
+  CM: { label: "CM", broadLine: "MIDFIELDER" },
+  CAM: { label: "CAM", broadLine: "MIDFIELDER" },
+  LM: { label: "LM", broadLine: "MIDFIELDER" },
+  RM: { label: "RM", broadLine: "MIDFIELDER" },
+  LW: { label: "LW", broadLine: "FORWARD" },
+  RW: { label: "RW", broadLine: "FORWARD" },
+  ST: { label: "ST", broadLine: "FORWARD" }
+} as const satisfies Record<VisiblePosition, PositionConfig>;
+
+export const integerStatSchema = z.number().int().min(0).max(99);
+
+export const cardStatsSchema = z.object({
+  pace: integerStatSchema,
+  shooting: integerStatSchema,
+  passing: integerStatSchema,
+  dribbling: integerStatSchema,
+  defending: integerStatSchema,
+  physical: integerStatSchema,
+  goalkeeping: integerStatSchema
+});
+
+export const publicPlayerCardSchema = z.object({
+  id: z.string().uuid(),
+  displayName: z.string().min(1),
+  shortName: z.string().min(1),
+  rating: z.number().int().min(1).max(99),
+  tier: z.enum(CARD_TIERS),
+  cost: z.number().int().nonnegative(),
+  position: z.enum(VISIBLE_POSITIONS),
+  broadLine: z.enum(BROAD_LINES),
+  nation: z.object({
+    id: z.string().uuid(),
+    code: z.string().min(2),
+    name: z.string().min(1),
+    flagCode: z.string().min(2),
+    flagUrl: z.string().optional()
+  }),
+  worldCup: z.object({
+    id: z.string().uuid(),
+    host: z.string().min(1),
+    year: z.number().int(),
+    label: z.string().min(1)
+  }),
+  role: z.enum(CARD_ROLES),
+  stats: cardStatsSchema,
+  materialKey: z.enum(MATERIAL_KEYS),
+  animationLevel: z.enum(["none", "subtle", "medium", "premium"])
+});
+
+export type PublicPlayerCardDto = z.infer<typeof publicPlayerCardSchema>;
+
+export const cardFilterQuerySchema = z.object({
+  search: z.string().trim().min(1).max(80).optional(),
+  tier: z.enum(CARD_TIERS).optional(),
+  minRating: z.coerce.number().int().min(1).max(99).optional(),
+  maxRating: z.coerce.number().int().min(1).max(99).optional(),
+  position: z.enum(VISIBLE_POSITIONS).optional(),
+  broadLine: z.enum(BROAD_LINES).optional(),
+  nation: z.string().trim().min(2).max(64).optional(),
+  year: z.coerce.number().int().min(1930).max(2100).optional(),
+  host: z.string().trim().min(1).max(80).optional(),
+  role: z.enum(CARD_ROLES).optional(),
+  stat: z.enum(STAT_KEYS).optional(),
+  statMin: z.coerce.number().int().min(0).max(99).optional(),
+  sort: z.enum(SORT_OPTIONS).default("rating_desc"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(60).default(24)
+});
+
+export type CardFilterQuery = z.input<typeof cardFilterQuerySchema>;
+export type NormalizedCardFilterQuery = z.output<typeof cardFilterQuerySchema>;
+
+export type PaginatedCardsDto = {
+  items: PublicPlayerCardDto[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+};
+
+export type CardFilterMetadataDto = {
+  tiers: CardTier[];
+  positions: VisiblePosition[];
+  broadLines: BroadLine[];
+  roles: CardRole[];
+  statKeys: StatKey[];
+  sortOptions: SortOption[];
+  nations: Array<{ id: string; code: string; name: string; flagCode: string; flagUrl?: string }>;
+  years: number[];
+  hosts: string[];
+};
+
+export function normalizeCardQuery(input: CardFilterQuery): NormalizedCardFilterQuery {
+  const parsed = cardFilterQuerySchema.parse(input);
+  if (parsed.minRating && parsed.maxRating && parsed.minRating > parsed.maxRating) {
+    return {
+      ...parsed,
+      minRating: parsed.maxRating,
+      maxRating: parsed.minRating
+    };
+  }
+  return parsed;
+}
+
+export function deriveTier(rating: number): CardTier {
+  const tier = CARD_TIERS.find((code) => {
+    const config = CARD_TIER_CONFIG_BY_CODE[code];
+    return rating >= config.ratingMin && rating <= config.ratingMax;
+  });
+
+  if (!tier) {
+    throw new RangeError(`Rating ${rating} is outside supported card tier range 55-99.`);
+  }
+
+  return tier;
+}
+
+export function materialForTier(tier: CardTier): MaterialKey {
+  return CARD_TIER_CONFIG_BY_CODE[tier].materialKey;
+}
+
+export function animationLevelForTier(tier: CardTier): AnimationLevel {
+  return CARD_TIER_CONFIG_BY_CODE[tier].animationLevel;
+}
+
+export function costForTier(tier: CardTier): number {
+  return CARD_TIER_CONFIG_BY_CODE[tier].cost;
+}
+
+export function broadLineForPosition(position: VisiblePosition): BroadLine {
+  return POSITION_CONFIG_BY_CODE[position].broadLine;
+}
+
+export function tierRank(tier: CardTier): number {
+  return CARD_TIER_CONFIG_BY_CODE[tier].rank;
+}

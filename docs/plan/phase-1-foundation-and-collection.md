@@ -48,6 +48,8 @@ Do not implement:
 
 For now, all cards are visible. Undiscovered mystery cards come later.
 
+Curated fictional seed data is acceptable and expected for this phase. Real World Cup/source-data ingestion belongs in [Phase 1B](phase-1b-real-data-ingestion.md), using the same DB/API/card UI surface.
+
 ## Backend Tasks
 
 1. Scaffold `apps/api`.

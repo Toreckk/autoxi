@@ -73,6 +73,8 @@ pnpm dev:api
 pnpm dev:web
 ```
 
+Phase 1 seed data is intentionally curated and fictional. It remains useful for local testing and demos after Phase 1, while real World Cup/source-data ingestion is deferred to [Phase 1B](phase-1b-real-data-ingestion.md).
+
 Manual verification:
 
 - `GET http://localhost:3000/health` returns ok.

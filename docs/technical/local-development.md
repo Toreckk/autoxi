@@ -25,6 +25,7 @@ NODE_ENV="development"
 API_PORT="3000"
 DATABASE_URL="postgresql://..."
 DATABASE_MIGRATION_URL="postgresql://..."
+CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
 ```
 
 Web:
@@ -32,6 +33,8 @@ Web:
 ```env
 VITE_API_BASE_URL="http://localhost:3000"
 ```
+
+If the frontend is opened at `127.0.0.1:5173` but the API only allows `localhost:5173`, browser CORS checks will fail. Include both `localhost` and `127.0.0.1` Vite origins in `CORS_ORIGINS` during local development. In non-production mode, the API also accepts loopback Vite fallback ports such as `5174` and `5175`, because Vite will pick the next free port when `5173` is busy.
 
 ## Verification
 
@@ -41,6 +44,7 @@ Verify:
 - `GET http://localhost:3000/cards`
 - `GET http://localhost:3000/cards/meta/filters`
 - `http://localhost:5173` loads the web app
+- `http://127.0.0.1:5173` loads the web app
 - Collection page displays seeded cards
 
 ## Optional Local PostgreSQL

@@ -2,6 +2,8 @@
 
 The first slice needs enough card data to exercise the Collection UI without waiting for the full ingestion pipeline.
 
+Phase 1 seed data is permanent local/dev/test/demo data. It is safe for offline development because public card names are fictional, but it is not the final content database. Real World Cup/source-data import is planned for [Phase 1B](../plan/phase-1b-real-data-ingestion.md).
+
 ## MVP Seed Data
 
 Create hand-authored fictional cards with:
@@ -20,6 +22,7 @@ Seed at least 40 cards so filters and pagination are meaningful.
 ## Seed Safety
 
 - Use fictional public names only.
+- Treat `displayName` and `shortName` as fictional public aliases.
 - Do not include real player names in public seed card fields.
 - If raw source fields are included for testing, keep them in `source_players` only.
 - Do not return raw source records from public endpoints.

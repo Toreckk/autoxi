@@ -132,7 +132,7 @@ Suggested material keys:
 - `brushed-steel`
 - `emerald-composite`
 - `violet-phase`
-- `cobalt-gold-phase`
+- `cobalt-gold`
 - `ruby-hero`
 - `black-pearl-icon`
 - `ivory-gold-icon`
