@@ -3,8 +3,9 @@ import { createDbClient } from "./client.js";
 import {
   nations,
   playerAliases,
+  playerCardGoalkeeperStats,
+  playerCardOutfieldStats,
   playerCards,
-  playerCardStats,
   playerIdentities,
   sourceImports,
   sourcePlayers,
@@ -17,7 +18,8 @@ async function seed() {
 
   try {
     await db.transaction(async (tx) => {
-      await tx.delete(playerCardStats);
+      await tx.delete(playerCardGoalkeeperStats);
+      await tx.delete(playerCardOutfieldStats);
       await tx.delete(playerCards);
       await tx.delete(playerAliases);
       await tx.delete(playerIdentities);
@@ -49,7 +51,7 @@ async function seed() {
 
       await tx.insert(sourceImports).values({
         id: seedImportId,
-        sourceName: "phase_1_curated_private_seed",
+        sourceName: "curated_fictional_seed_v1",
         sourceVersion: "1",
         licenseNote: "Fictional development seed data only.",
         metadata: { publicSafeAliases: true }
@@ -71,7 +73,7 @@ async function seed() {
         await tx.insert(sourcePlayers).values({
           id: sourcePlayerId,
           sourceImportId: seedImportId,
-          sourceProvider: "phase_1_curated_private_seed",
+          sourceProvider: "curated_fictional_seed_v1",
           sourceExternalId: `seed-${card.ordinal.toString().padStart(3, "0")}`,
           rawName: `Private Seed Player ${card.ordinal.toString().padStart(3, "0")}`,
           rawNationality: nation.displayName,
@@ -85,7 +87,7 @@ async function seed() {
           sourcePlayerId,
           nationalityId: nation.id,
           canonicalPosition: card.position,
-          notes: "Phase 1 fictional identity."
+          notes: "Curated fictional development identity."
         });
 
         await tx.insert(playerAliases).values({
@@ -94,10 +96,10 @@ async function seed() {
           displayName: card.displayName,
           shortName: card.shortName,
           localeHint: nation.flagCode,
-          riskLevel: "LOW",
-          generationMethod: "manual_phase_1_seed",
+          riskLevel: "SAFE",
+          generationMethod: "manual_curated_seed",
           isApproved: true,
-          reviewedBy: "phase_1_seed",
+          reviewedBy: "curated_seed",
           reviewedAt: new Date(),
           notes: "Fictional public alias.",
           metadata: { publicSafe: true }
@@ -113,15 +115,33 @@ async function seed() {
           tier: card.tier,
           position: card.position,
           broadLine: card.broadLine,
+          statProfile: card.statProfile,
           role: card.role,
           cost: card.cost,
           materialKey: card.materialKey
         });
 
-        await tx.insert(playerCardStats).values({
-          cardId,
-          ...card.stats
-        });
+        if (card.stats.profile === "GOALKEEPER") {
+          await tx.insert(playerCardGoalkeeperStats).values({
+            cardId,
+            diving: card.stats.diving,
+            handling: card.stats.handling,
+            kicking: card.stats.kicking,
+            reflexes: card.stats.reflexes,
+            speed: card.stats.speed,
+            positioning: card.stats.positioning
+          });
+        } else {
+          await tx.insert(playerCardOutfieldStats).values({
+            cardId,
+            pace: card.stats.pace,
+            shooting: card.stats.shooting,
+            passing: card.stats.passing,
+            dribbling: card.stats.dribbling,
+            defending: card.stats.defending,
+            physical: card.stats.physical
+          });
+        }
       }
     });
 

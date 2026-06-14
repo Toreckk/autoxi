@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight, RotateCcw, Search, SlidersHorizontal } from 
 import {
   CARD_TIERS,
   SORT_OPTIONS,
-  STAT_KEYS,
   type CardFilterQuery,
   type PublicPlayerCardDto
 } from "@autoxi/domain";
@@ -45,7 +44,7 @@ export function CollectionPage() {
       year: filters.year || undefined,
       role: filters.role || undefined,
       stat: filters.stat || undefined,
-      statMin: filters.statMin || undefined,
+      statMin: filters.stat ? filters.statMin || undefined : undefined,
       sort: filters.sort,
       page: filters.page,
       pageSize: COLLECTION_PAGE_SIZE
@@ -73,11 +72,33 @@ export function CollectionPage() {
   }, [cardsQuery.data]);
 
   function updateFilter(key: keyof typeof initialFilters, value: string | number) {
-    setFilters((current) => ({
-      ...current,
-      [key]: value,
-      page: key === "page" ? Number(value) : 1
-    }));
+    setFilters((current) => {
+      const next = {
+        ...current,
+        [key]: value,
+        page: key === "page" ? Number(value) : 1
+      };
+
+      if (key === "stat" && !value) {
+        next.statMin = "";
+      }
+
+      if (key === "position" && current.stat && metaQuery.data?.statGroups) {
+        const allowedStats =
+          value === "GK"
+            ? metaQuery.data.statGroups.goalkeeper
+            : value
+              ? metaQuery.data.statGroups.outfield
+              : [...metaQuery.data.statGroups.outfield, ...metaQuery.data.statGroups.goalkeeper];
+
+        if (!(allowedStats as readonly string[]).includes(current.stat)) {
+          next.stat = "";
+          next.statMin = "";
+        }
+      }
+
+      return next;
+    });
 
     const event =
       key === "search" ? "collection_search_changed" : key === "sort" ? "collection_sort_changed" : key === "page" ? "collection_page_changed" : "collection_filter_changed";
@@ -100,6 +121,9 @@ export function CollectionPage() {
 
   const data = cardsQuery.data;
   const isBusy = cardsQuery.isLoading || metaQuery.isLoading;
+  const statGroups = metaQuery.data?.statGroups;
+  const positionStatProfile =
+    filters.position === "GK" ? "goalkeeper" : filters.position ? "outfield" : "all";
 
   return (
     <main className="collection-screen">
@@ -130,7 +154,7 @@ export function CollectionPage() {
           <input
             value={filters.search}
             onChange={(event) => updateFilter("search", event.target.value)}
-            placeholder="Search aliases"
+            placeholder="Search players"
           />
         </label>
 
@@ -172,11 +196,38 @@ export function CollectionPage() {
 
         <Select value={filters.stat} onChange={(value) => updateFilter("stat", value)} label="Stat">
           <option value="">Any stat</option>
-          {STAT_KEYS.map((stat) => (
-            <option key={stat} value={stat}>
-              {labelize(stat)}
-            </option>
-          ))}
+          {statGroups && positionStatProfile === "outfield"
+            ? statGroups.outfield.map((stat) => (
+                <option key={stat} value={stat}>
+                  {labelize(stat)}
+                </option>
+              ))
+            : null}
+          {statGroups && positionStatProfile === "goalkeeper"
+            ? statGroups.goalkeeper.map((stat) => (
+                <option key={stat} value={stat}>
+                  {labelize(stat)}
+                </option>
+              ))
+            : null}
+          {statGroups && positionStatProfile === "all" ? (
+            <>
+              <optgroup label="Outfield">
+                {statGroups.outfield.map((stat) => (
+                  <option key={stat} value={stat}>
+                    {labelize(stat)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Goalkeeper">
+                {statGroups.goalkeeper.map((stat) => (
+                  <option key={stat} value={stat}>
+                    {labelize(stat)}
+                  </option>
+                ))}
+              </optgroup>
+            </>
+          ) : null}
         </Select>
 
         <label className="number-field">
@@ -185,6 +236,7 @@ export function CollectionPage() {
             min="0"
             max="99"
             type="number"
+            disabled={!filters.stat}
             value={filters.statMin}
             onChange={(event) => updateFilter("statMin", event.target.value)}
           />

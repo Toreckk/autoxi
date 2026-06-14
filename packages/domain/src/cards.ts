@@ -45,7 +45,32 @@ export const STAT_KEYS = [
   "dribbling",
   "defending",
   "physical",
-  "goalkeeping"
+  "diving",
+  "handling",
+  "kicking",
+  "reflexes",
+  "speed",
+  "positioning"
+] as const;
+
+export const STAT_PROFILES = ["OUTFIELD", "GOALKEEPER"] as const;
+
+export const OUTFIELD_STAT_KEYS = [
+  "pace",
+  "shooting",
+  "passing",
+  "dribbling",
+  "defending",
+  "physical"
+] as const;
+
+export const GOALKEEPER_STAT_KEYS = [
+  "diving",
+  "handling",
+  "kicking",
+  "reflexes",
+  "speed",
+  "positioning"
 ] as const;
 
 export const MATERIAL_KEYS = [
@@ -75,6 +100,9 @@ export type CardTier = (typeof CARD_TIERS)[number];
 export type VisiblePosition = (typeof VISIBLE_POSITIONS)[number];
 export type BroadLine = (typeof BROAD_LINES)[number];
 export type CardRole = (typeof CARD_ROLES)[number];
+export type StatProfile = (typeof STAT_PROFILES)[number];
+export type OutfieldStatKey = (typeof OUTFIELD_STAT_KEYS)[number];
+export type GoalkeeperStatKey = (typeof GOALKEEPER_STAT_KEYS)[number];
 export type StatKey = (typeof STAT_KEYS)[number];
 export type MaterialKey = (typeof MATERIAL_KEYS)[number];
 export type SortOption = (typeof SORT_OPTIONS)[number];
@@ -186,15 +214,34 @@ export const POSITION_CONFIG_BY_CODE = {
 
 export const integerStatSchema = z.number().int().min(0).max(99);
 
-export const cardStatsSchema = z.object({
+export const outfieldCardStatsSchema = z.object({
+  profile: z.literal("OUTFIELD"),
   pace: integerStatSchema,
   shooting: integerStatSchema,
   passing: integerStatSchema,
   dribbling: integerStatSchema,
   defending: integerStatSchema,
-  physical: integerStatSchema,
-  goalkeeping: integerStatSchema
+  physical: integerStatSchema
 });
+
+export const goalkeeperCardStatsSchema = z.object({
+  profile: z.literal("GOALKEEPER"),
+  diving: integerStatSchema,
+  handling: integerStatSchema,
+  kicking: integerStatSchema,
+  reflexes: integerStatSchema,
+  speed: integerStatSchema,
+  positioning: integerStatSchema
+});
+
+export const cardStatsSchema = z.discriminatedUnion("profile", [
+  outfieldCardStatsSchema,
+  goalkeeperCardStatsSchema
+]);
+
+export type OutfieldCardStatsDto = z.infer<typeof outfieldCardStatsSchema>;
+export type GoalkeeperCardStatsDto = z.infer<typeof goalkeeperCardStatsSchema>;
+export type PlayerCardStatsDto = z.infer<typeof cardStatsSchema>;
 
 export const publicPlayerCardSchema = z.object({
   id: z.string().uuid(),
@@ -205,6 +252,7 @@ export const publicPlayerCardSchema = z.object({
   cost: z.number().int().nonnegative(),
   position: z.enum(VISIBLE_POSITIONS),
   broadLine: z.enum(BROAD_LINES),
+  statProfile: z.enum(STAT_PROFILES),
   nation: z.object({
     id: z.string().uuid(),
     code: z.string().min(2),
@@ -261,6 +309,10 @@ export type CardFilterMetadataDto = {
   broadLines: BroadLine[];
   roles: CardRole[];
   statKeys: StatKey[];
+  statGroups: {
+    outfield: OutfieldStatKey[];
+    goalkeeper: GoalkeeperStatKey[];
+  };
   sortOptions: SortOption[];
   nations: Array<{ id: string; code: string; name: string; flagCode: string; flagUrl?: string }>;
   years: number[];
@@ -306,6 +358,10 @@ export function costForTier(tier: CardTier): number {
 
 export function broadLineForPosition(position: VisiblePosition): BroadLine {
   return POSITION_CONFIG_BY_CODE[position].broadLine;
+}
+
+export function statProfileForPosition(position: VisiblePosition): StatProfile {
+  return position === "GK" ? "GOALKEEPER" : "OUTFIELD";
 }
 
 export function tierRank(tier: CardTier): number {

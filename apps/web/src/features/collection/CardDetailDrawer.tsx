@@ -2,6 +2,21 @@ import { X } from "lucide-react";
 import type { PublicPlayerCardDto } from "@autoxi/domain";
 import { PlayerCardCompact } from "./PlayerCard.js";
 
+const statLabels = {
+  pace: "PAC",
+  shooting: "SHO",
+  passing: "PAS",
+  dribbling: "DRI",
+  defending: "DEF",
+  physical: "PHY",
+  diving: "DIV",
+  handling: "HAN",
+  kicking: "KIC",
+  reflexes: "REF",
+  speed: "SPD",
+  positioning: "POS"
+} as const;
+
 export function CardDetailDrawer({
   card,
   onClose
@@ -12,6 +27,9 @@ export function CardDetailDrawer({
   if (!card) return null;
 
   const flagSrc = card.nation.flagCode ? `/flags/${card.nation.flagCode}.svg` : "/flags/unknown.svg";
+  const statEntries = Object.entries(card.stats).filter(([key]) => key !== "profile") as Array<
+    [keyof typeof statLabels, number]
+  >;
 
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
@@ -57,9 +75,9 @@ export function CardDetailDrawer({
         </dl>
 
         <dl className="detail-stats">
-          {Object.entries(card.stats).map(([key, value]) => (
+          {statEntries.map(([key, value]) => (
             <div key={key}>
-              <dt>{key}</dt>
+              <dt>{statLabels[key]}</dt>
               <dd>{value}</dd>
             </div>
           ))}

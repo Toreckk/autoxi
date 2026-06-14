@@ -147,6 +147,7 @@ Columns:
 - `tier_override enum nullable`
 - `position enum`
 - `broad_line enum`
+- `stat_profile enum`
 - `role enum`
 - `cost int`
 - `material_key enum`
@@ -163,9 +164,9 @@ Indexes:
 - index `world_cup_edition_id`
 - unique `(player_identity_id, world_cup_edition_id)`
 
-### `player_card_stats`
+### `player_card_outfield_stats`
 
-Purpose: hidden stat block for cards.
+Purpose: hidden outfield stat block for non-GK cards.
 
 Columns:
 
@@ -176,7 +177,24 @@ Columns:
 - `dribbling int`
 - `defending int`
 - `physical int`
-- `goalkeeping int`
+
+Constraints:
+
+- each stat between 0 and 99
+
+### `player_card_goalkeeper_stats`
+
+Purpose: hidden goalkeeper stat block for GK cards.
+
+Columns:
+
+- `card_id uuid primary key`
+- `diving int`
+- `handling int`
+- `kicking int`
+- `reflexes int`
+- `speed int`
+- `positioning int`
 
 Constraints:
 

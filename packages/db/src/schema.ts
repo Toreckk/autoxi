@@ -18,11 +18,13 @@ import {
   CARD_ROLES,
   CARD_TIERS,
   MATERIAL_KEYS,
+  STAT_PROFILES,
   VISIBLE_POSITIONS,
   type BroadLine,
   type CardRole,
   type CardTier,
   type MaterialKey,
+  type StatProfile,
   type VisiblePosition
 } from "@autoxi/domain";
 
@@ -31,7 +33,8 @@ export const visiblePositionEnum = pgEnum("visible_position", VISIBLE_POSITIONS)
 export const broadLineEnum = pgEnum("broad_line", BROAD_LINES);
 export const cardRoleEnum = pgEnum("card_role", CARD_ROLES);
 export const materialKeyEnum = pgEnum("material_key", MATERIAL_KEYS);
-export const aliasRiskLevelEnum = pgEnum("alias_risk_level", ["LOW", "MEDIUM", "HIGH"]);
+export const statProfileEnum = pgEnum("stat_profile", STAT_PROFILES);
+export const aliasRiskLevelEnum = pgEnum("alias_risk_level", ["SAFE", "EVOCATIVE", "RISKY", "BLOCKED"]);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -133,7 +136,7 @@ export const playerAliases = pgTable(
     displayName: text("display_name").notNull(),
     shortName: text("short_name").notNull(),
     localeHint: text("locale_hint"),
-    riskLevel: aliasRiskLevelEnum("risk_level").default("LOW").notNull(),
+    riskLevel: aliasRiskLevelEnum("risk_level").default("SAFE").notNull(),
     generationMethod: text("generation_method").notNull(),
     isApproved: boolean("is_approved").default(false).notNull(),
     reviewedBy: text("reviewed_by"),
@@ -170,6 +173,7 @@ export const playerCards = pgTable(
     tierOverride: cardTierEnum("tier_override").$type<CardTier | null>(),
     position: visiblePositionEnum("position").notNull().$type<VisiblePosition>(),
     broadLine: broadLineEnum("broad_line").notNull().$type<BroadLine>(),
+    statProfile: statProfileEnum("stat_profile").notNull().$type<StatProfile>(),
     role: cardRoleEnum("role").notNull().$type<CardRole>(),
     cost: integer("cost").notNull(),
     materialKey: materialKeyEnum("material_key").notNull().$type<MaterialKey>(),
@@ -186,13 +190,13 @@ export const playerCards = pgTable(
       table.playerIdentityId,
       table.worldCupEditionId
     ),
-    ratingCheck: check("player_cards_rating_check", sql`${table.rating} between 1 and 99`),
+    ratingCheck: check("player_cards_rating_check", sql`${table.rating} between 55 and 99`),
     costCheck: check("player_cards_cost_check", sql`${table.cost} >= 0`)
   })
 );
 
-export const playerCardStats = pgTable(
-  "player_card_stats",
+export const playerCardOutfieldStats = pgTable(
+  "player_card_outfield_stats",
   {
     cardId: uuid("card_id")
       .notNull()
@@ -202,18 +206,40 @@ export const playerCardStats = pgTable(
     passing: integer("passing").notNull(),
     dribbling: integer("dribbling").notNull(),
     defending: integer("defending").notNull(),
-    physical: integer("physical").notNull(),
-    goalkeeping: integer("goalkeeping").notNull()
+    physical: integer("physical").notNull()
   },
   (table) => ({
     pk: primaryKey({ columns: [table.cardId] }),
-    paceCheck: check("player_card_stats_pace_check", sql`${table.pace} between 0 and 99`),
-    shootingCheck: check("player_card_stats_shooting_check", sql`${table.shooting} between 0 and 99`),
-    passingCheck: check("player_card_stats_passing_check", sql`${table.passing} between 0 and 99`),
-    dribblingCheck: check("player_card_stats_dribbling_check", sql`${table.dribbling} between 0 and 99`),
-    defendingCheck: check("player_card_stats_defending_check", sql`${table.defending} between 0 and 99`),
-    physicalCheck: check("player_card_stats_physical_check", sql`${table.physical} between 0 and 99`),
-    goalkeepingCheck: check("player_card_stats_goalkeeping_check", sql`${table.goalkeeping} between 0 and 99`)
+    paceCheck: check("player_card_outfield_stats_pace_check", sql`${table.pace} between 0 and 99`),
+    shootingCheck: check("player_card_outfield_stats_shooting_check", sql`${table.shooting} between 0 and 99`),
+    passingCheck: check("player_card_outfield_stats_passing_check", sql`${table.passing} between 0 and 99`),
+    dribblingCheck: check("player_card_outfield_stats_dribbling_check", sql`${table.dribbling} between 0 and 99`),
+    defendingCheck: check("player_card_outfield_stats_defending_check", sql`${table.defending} between 0 and 99`),
+    physicalCheck: check("player_card_outfield_stats_physical_check", sql`${table.physical} between 0 and 99`)
+  })
+);
+
+export const playerCardGoalkeeperStats = pgTable(
+  "player_card_goalkeeper_stats",
+  {
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => playerCards.id, { onDelete: "cascade" }),
+    diving: integer("diving").notNull(),
+    handling: integer("handling").notNull(),
+    kicking: integer("kicking").notNull(),
+    reflexes: integer("reflexes").notNull(),
+    speed: integer("speed").notNull(),
+    positioning: integer("positioning").notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.cardId] }),
+    divingCheck: check("player_card_goalkeeper_stats_diving_check", sql`${table.diving} between 0 and 99`),
+    handlingCheck: check("player_card_goalkeeper_stats_handling_check", sql`${table.handling} between 0 and 99`),
+    kickingCheck: check("player_card_goalkeeper_stats_kicking_check", sql`${table.kicking} between 0 and 99`),
+    reflexesCheck: check("player_card_goalkeeper_stats_reflexes_check", sql`${table.reflexes} between 0 and 99`),
+    speedCheck: check("player_card_goalkeeper_stats_speed_check", sql`${table.speed} between 0 and 99`),
+    positioningCheck: check("player_card_goalkeeper_stats_positioning_check", sql`${table.positioning} between 0 and 99`)
   })
 );
 

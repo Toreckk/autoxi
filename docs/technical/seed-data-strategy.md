@@ -13,11 +13,13 @@ Create hand-authored fictional cards with:
 - multiple World Cup years,
 - all broad lines,
 - several visible positions,
-- varied ratings and stats,
+- varied ratings and profile-specific stats,
 - varied roles,
 - safe fictional public names.
 
 Seed at least 40 cards so filters and pagination are meaningful.
+
+Outfield cards should use only pace, shooting, passing, dribbling, defending, and physical. Goalkeeper cards should use only diving, handling, kicking, reflexes, speed, and positioning. The seed should derive `statProfile` from position, with GK mapped to `GOALKEEPER` and every other visible position mapped to `OUTFIELD`.
 
 ## Seed Safety
 

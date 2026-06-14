@@ -176,7 +176,8 @@ Required Phase 1 indexes:
 - `player_card_stats.dribbling`
 - `player_card_stats.defending`
 - `player_card_stats.physical`
-- `player_card_stats.goalkeeping`
+- `player_card_outfield_stats` for pace, shooting, passing, dribbling, defending, physical
+- `player_card_goalkeeper_stats` for diving, handling, kicking, reflexes, speed, positioning
 
 For MVP search, `ILIKE` is acceptable. Full-text search or trigram indexes can come later.
 

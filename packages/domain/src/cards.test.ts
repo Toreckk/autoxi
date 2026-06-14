@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   CARD_TIERS,
   CARD_TIER_CONFIG_BY_CODE,
+  GOALKEEPER_STAT_KEYS,
   MATERIAL_KEYS,
+  OUTFIELD_STAT_KEYS,
   POSITION_CONFIG_BY_CODE,
+  STAT_KEYS,
   VISIBLE_POSITIONS,
   animationLevelForTier,
   broadLineForPosition,
   deriveTier,
   materialForTier,
   normalizeCardQuery,
+  publicPlayerCardSchema,
+  statProfileForPosition,
   tierRank
 } from "./cards.js";
 
@@ -64,6 +69,85 @@ describe("card domain helpers", () => {
     expect(broadLineForPosition("CB")).toBe("DEFENDER");
     expect(broadLineForPosition("CM")).toBe("MIDFIELDER");
     expect(broadLineForPosition("ST")).toBe("FORWARD");
+  });
+
+  it("maps positions to stat profiles", () => {
+    expect(statProfileForPosition("GK")).toBe("GOALKEEPER");
+    expect(statProfileForPosition("CB")).toBe("OUTFIELD");
+    expect(statProfileForPosition("CM")).toBe("OUTFIELD");
+    expect(statProfileForPosition("ST")).toBe("OUTFIELD");
+  });
+
+  it("keeps public stat groups explicit and non-overlapping", () => {
+    expect(STAT_KEYS).toEqual([...OUTFIELD_STAT_KEYS, ...GOALKEEPER_STAT_KEYS]);
+
+    for (const stat of OUTFIELD_STAT_KEYS) {
+      expect(GOALKEEPER_STAT_KEYS).not.toContain(stat as never);
+    }
+  });
+
+  it("validates public cards with profile-specific stats", () => {
+    const baseCard = {
+      id: "00000000-0000-4000-8000-000000000001",
+      displayName: "Test Player",
+      shortName: "Player",
+      rating: 84,
+      tier: "STAR",
+      position: "CM",
+      broadLine: "MIDFIELDER",
+      role: "Creator",
+      cost: 5,
+      materialKey: "violet-phase",
+      animationLevel: "medium",
+      nation: {
+        id: "00000000-0000-4000-8000-000000000002",
+        code: "TST",
+        name: "Testland",
+        flagCode: "tst",
+        flagUrl: "/flags/tst.svg"
+      },
+      worldCup: {
+        id: "00000000-0000-4000-8000-000000000003",
+        host: "Testland",
+        year: 2026,
+        label: "Testland 2026"
+      },
+      tags: []
+    };
+
+    expect(
+      publicPlayerCardSchema.parse({
+        ...baseCard,
+        statProfile: "OUTFIELD",
+        stats: {
+          profile: "OUTFIELD",
+          pace: 80,
+          shooting: 78,
+          passing: 86,
+          dribbling: 84,
+          defending: 70,
+          physical: 76
+        }
+      }).stats.profile
+    ).toBe("OUTFIELD");
+
+    expect(() =>
+      publicPlayerCardSchema.parse({
+        ...baseCard,
+        statProfile: "GOALKEEPER",
+        position: "GK",
+        broadLine: "GOALKEEPER",
+        stats: {
+          profile: "GOALKEEPER",
+          pace: 80,
+          shooting: 78,
+          passing: 86,
+          dribbling: 84,
+          defending: 70,
+          physical: 76
+        }
+      })
+    ).toThrow();
   });
 
   it("has metadata for every tier", () => {

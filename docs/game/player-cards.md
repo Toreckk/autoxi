@@ -39,6 +39,7 @@ Public card DTOs should include:
 - `cost`
 - `position`
 - `broadLine`
+- `statProfile`
 - `nation.code`
 - `nation.name`
 - `nation.flagCode`
@@ -112,7 +113,9 @@ Visible positions:
 
 ## Stats
 
-Hidden stats are 0-99 integers:
+Hidden stats are profile-specific 0-99 integers.
+
+Outfield cards use:
 
 - pace
 - shooting
@@ -120,7 +123,15 @@ Hidden stats are 0-99 integers:
 - dribbling
 - defending
 - physical
-- goalkeeping
+
+Goalkeeper cards use:
+
+- diving
+- handling
+- kicking
+- reflexes
+- speed
+- positioning
 
 Rating is an integer from 55-99.
 

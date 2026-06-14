@@ -32,6 +32,24 @@ function PlayerCard({
   const Element = onClick ? "button" : "article";
 
   const flagSrc = card.nation.flagCode ? `/flags/${card.nation.flagCode}.svg` : "/flags/unknown.svg";
+  const compactStats: Array<{ label: string; value: number }> =
+    card.stats.profile === "GOALKEEPER"
+      ? [
+          { label: "DIV", value: card.stats.diving },
+          { label: "HAN", value: card.stats.handling },
+          { label: "KIC", value: card.stats.kicking },
+          { label: "REF", value: card.stats.reflexes },
+          { label: "SPD", value: card.stats.speed },
+          { label: "POS", value: card.stats.positioning }
+        ]
+      : [
+          { label: "PAC", value: card.stats.pace },
+          { label: "SHO", value: card.stats.shooting },
+          { label: "PAS", value: card.stats.passing },
+          { label: "DRI", value: card.stats.dribbling },
+          { label: "DEF", value: card.stats.defending },
+          { label: "PHY", value: card.stats.physical }
+        ];
 
   return (
     <Element
@@ -58,12 +76,9 @@ function PlayerCard({
         </div>
         {size === "compact" ? (
           <dl className="stat-strip">
-            <Stat label="PAC" value={card.stats.pace} />
-            <Stat label="SHO" value={card.stats.shooting} />
-            <Stat label="PAS" value={card.stats.passing} />
-            <Stat label="DRI" value={card.stats.dribbling} />
-            <Stat label="DEF" value={card.stats.defending} />
-            <Stat label="PHY" value={card.stats.physical} />
+            {compactStats.map(({ label, value }) => (
+              <Stat key={label} label={label} value={value} />
+            ))}
           </dl>
         ) : null}
         <div className="player-card__plate">

@@ -6,6 +6,7 @@ import {
   eq,
   gte,
   ilike,
+  isNotNull,
   lte,
   or,
   type AnyColumn,
@@ -15,6 +16,8 @@ import {
   BROAD_LINES,
   CARD_ROLES,
   CARD_TIERS,
+  GOALKEEPER_STAT_KEYS,
+  OUTFIELD_STAT_KEYS,
   SORT_OPTIONS,
   STAT_KEYS,
   VISIBLE_POSITIONS,
@@ -29,17 +32,32 @@ import {
   type StatKey
 } from "@autoxi/domain";
 import type { AutoxiDb } from "./client.js";
-import { nations, playerAliases, playerCards, playerCardStats, worldCupEditions } from "./schema.js";
+import {
+  nations,
+  playerAliases,
+  playerCards,
+  playerCardGoalkeeperStats,
+  playerCardOutfieldStats,
+  worldCupEditions
+} from "./schema.js";
 
 const statColumns: Record<StatKey, AnyColumn> = {
-  pace: playerCardStats.pace,
-  shooting: playerCardStats.shooting,
-  passing: playerCardStats.passing,
-  dribbling: playerCardStats.dribbling,
-  defending: playerCardStats.defending,
-  physical: playerCardStats.physical,
-  goalkeeping: playerCardStats.goalkeeping
+  pace: playerCardOutfieldStats.pace,
+  shooting: playerCardOutfieldStats.shooting,
+  passing: playerCardOutfieldStats.passing,
+  dribbling: playerCardOutfieldStats.dribbling,
+  defending: playerCardOutfieldStats.defending,
+  physical: playerCardOutfieldStats.physical,
+  diving: playerCardGoalkeeperStats.diving,
+  handling: playerCardGoalkeeperStats.handling,
+  kicking: playerCardGoalkeeperStats.kicking,
+  reflexes: playerCardGoalkeeperStats.reflexes,
+  speed: playerCardGoalkeeperStats.speed,
+  positioning: playerCardGoalkeeperStats.positioning
 };
+
+const outfieldStatKeys = new Set<StatKey>(OUTFIELD_STAT_KEYS);
+const goalkeeperStatKeys = new Set<StatKey>(GOALKEEPER_STAT_KEYS);
 
 type CardRow = {
   id: string;
@@ -50,6 +68,7 @@ type CardRow = {
   cost: number;
   position: PublicPlayerCardDto["position"];
   broadLine: PublicPlayerCardDto["broadLine"];
+  statProfile: PublicPlayerCardDto["statProfile"];
   role: PublicPlayerCardDto["role"];
   materialKey: PublicPlayerCardDto["materialKey"];
   nationId: string;
@@ -60,13 +79,18 @@ type CardRow = {
   worldCupId: string;
   host: string;
   year: number;
-  pace: number;
-  shooting: number;
-  passing: number;
-  dribbling: number;
-  defending: number;
-  physical: number;
-  goalkeeping: number;
+  pace: number | null;
+  shooting: number | null;
+  passing: number | null;
+  dribbling: number | null;
+  defending: number | null;
+  physical: number | null;
+  diving: number | null;
+  handling: number | null;
+  kicking: number | null;
+  reflexes: number | null;
+  speed: number | null;
+  positioning: number | null;
 };
 
 export class CardRepository {
@@ -84,7 +108,8 @@ export class CardRepository {
       .innerJoin(playerAliases, eq(playerAliases.id, playerCards.aliasId))
       .innerJoin(nations, eq(nations.id, playerCards.nationId))
       .innerJoin(worldCupEditions, eq(worldCupEditions.id, playerCards.worldCupEditionId))
-      .innerJoin(playerCardStats, eq(playerCardStats.cardId, playerCards.id))
+      .leftJoin(playerCardOutfieldStats, eq(playerCardOutfieldStats.cardId, playerCards.id))
+      .leftJoin(playerCardGoalkeeperStats, eq(playerCardGoalkeeperStats.cardId, playerCards.id))
       .$dynamic();
 
     if (whereClause) {
@@ -99,7 +124,8 @@ export class CardRepository {
       .innerJoin(playerAliases, eq(playerAliases.id, playerCards.aliasId))
       .innerJoin(nations, eq(nations.id, playerCards.nationId))
       .innerJoin(worldCupEditions, eq(worldCupEditions.id, playerCards.worldCupEditionId))
-      .innerJoin(playerCardStats, eq(playerCardStats.cardId, playerCards.id))
+      .leftJoin(playerCardOutfieldStats, eq(playerCardOutfieldStats.cardId, playerCards.id))
+      .leftJoin(playerCardGoalkeeperStats, eq(playerCardGoalkeeperStats.cardId, playerCards.id))
       .$dynamic();
 
     if (whereClause) {
@@ -125,7 +151,8 @@ export class CardRepository {
       .innerJoin(playerAliases, eq(playerAliases.id, playerCards.aliasId))
       .innerJoin(nations, eq(nations.id, playerCards.nationId))
       .innerJoin(worldCupEditions, eq(worldCupEditions.id, playerCards.worldCupEditionId))
-      .innerJoin(playerCardStats, eq(playerCardStats.cardId, playerCards.id))
+      .leftJoin(playerCardOutfieldStats, eq(playerCardOutfieldStats.cardId, playerCards.id))
+      .leftJoin(playerCardGoalkeeperStats, eq(playerCardGoalkeeperStats.cardId, playerCards.id))
       .where(eq(playerCards.id, id))
       .limit(1);
 
@@ -163,6 +190,10 @@ export class CardRepository {
       broadLines: [...BROAD_LINES],
       roles: [...CARD_ROLES],
       statKeys: [...STAT_KEYS],
+      statGroups: {
+        outfield: [...OUTFIELD_STAT_KEYS],
+        goalkeeper: [...GOALKEEPER_STAT_KEYS]
+      },
       sortOptions: [...SORT_OPTIONS],
       nations: nationRows.map((nation) => ({
         id: nation.id,
@@ -200,6 +231,12 @@ export class CardRepository {
     }
     if (query.stat && query.statMin !== undefined) {
       conditions.push(gte(statColumns[query.stat], query.statMin));
+      if (outfieldStatKeys.has(query.stat)) {
+        conditions.push(isNotNull(playerCardOutfieldStats.cardId));
+      }
+      if (goalkeeperStatKeys.has(query.stat)) {
+        conditions.push(isNotNull(playerCardGoalkeeperStats.cardId));
+      }
     }
 
     return conditions;
@@ -239,6 +276,7 @@ export class CardRepository {
       cost: playerCards.cost,
       position: playerCards.position,
       broadLine: playerCards.broadLine,
+      statProfile: playerCards.statProfile,
       role: playerCards.role,
       materialKey: playerCards.materialKey,
       nationId: nations.id,
@@ -249,13 +287,18 @@ export class CardRepository {
       worldCupId: worldCupEditions.id,
       host: worldCupEditions.hostName,
       year: worldCupEditions.year,
-      pace: playerCardStats.pace,
-      shooting: playerCardStats.shooting,
-      passing: playerCardStats.passing,
-      dribbling: playerCardStats.dribbling,
-      defending: playerCardStats.defending,
-      physical: playerCardStats.physical,
-      goalkeeping: playerCardStats.goalkeeping
+      pace: playerCardOutfieldStats.pace,
+      shooting: playerCardOutfieldStats.shooting,
+      passing: playerCardOutfieldStats.passing,
+      dribbling: playerCardOutfieldStats.dribbling,
+      defending: playerCardOutfieldStats.defending,
+      physical: playerCardOutfieldStats.physical,
+      diving: playerCardGoalkeeperStats.diving,
+      handling: playerCardGoalkeeperStats.handling,
+      kicking: playerCardGoalkeeperStats.kicking,
+      reflexes: playerCardGoalkeeperStats.reflexes,
+      speed: playerCardGoalkeeperStats.speed,
+      positioning: playerCardGoalkeeperStats.positioning
     };
   }
 
@@ -269,6 +312,7 @@ export class CardRepository {
       cost: row.cost,
       position: row.position,
       broadLine: row.broadLine,
+      statProfile: row.statProfile,
       nation: {
         id: row.nationId,
         code: row.nationCode ?? row.flagCode.toUpperCase(),
@@ -283,17 +327,35 @@ export class CardRepository {
         label: `${row.host} ${row.year}`
       },
       role: row.role,
-      stats: {
-        pace: row.pace,
-        shooting: row.shooting,
-        passing: row.passing,
-        dribbling: row.dribbling,
-        defending: row.defending,
-        physical: row.physical,
-        goalkeeping: row.goalkeeping
-      },
+      stats:
+        row.statProfile === "GOALKEEPER"
+          ? {
+              profile: "GOALKEEPER",
+              diving: requiredStat(row.diving, "diving", row.id),
+              handling: requiredStat(row.handling, "handling", row.id),
+              kicking: requiredStat(row.kicking, "kicking", row.id),
+              reflexes: requiredStat(row.reflexes, "reflexes", row.id),
+              speed: requiredStat(row.speed, "speed", row.id),
+              positioning: requiredStat(row.positioning, "positioning", row.id)
+            }
+          : {
+              profile: "OUTFIELD",
+              pace: requiredStat(row.pace, "pace", row.id),
+              shooting: requiredStat(row.shooting, "shooting", row.id),
+              passing: requiredStat(row.passing, "passing", row.id),
+              dribbling: requiredStat(row.dribbling, "dribbling", row.id),
+              defending: requiredStat(row.defending, "defending", row.id),
+              physical: requiredStat(row.physical, "physical", row.id)
+            },
       materialKey: row.materialKey,
       animationLevel: animationLevelForTier(row.tier)
     });
   }
+}
+
+function requiredStat(value: number | null, key: string, cardId: string): number {
+  if (value === null) {
+    throw new Error(`Missing ${key} stat for card ${cardId}`);
+  }
+  return value;
 }

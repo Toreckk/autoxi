@@ -28,12 +28,13 @@ Import World Cup player/squad/tournament data into the card catalog schema, gene
 - Generate and validate `flagCode`.
 - Map World Cup edition host/year.
 - Assign visible position and broad line.
-- Generate hidden stats.
+- Generate hidden stats using the correct stat profile: outfield cards get pace/shooting/passing/dribbling/defending/physical, while GK cards get diving/handling/kicking/reflexes/speed/positioning.
 - Assign tier from rating using domain tier config.
 - Assign cost, material, and animation from tier config.
 - Generate import reports for missing data or uncertain mappings.
 - Require manual alias approval for high-tier cards.
 - Manually curate Star, World Class, Hero, and Icon cards.
+- Keep source/import identifiers out of public DTOs; public aliases should use the SAFE/EVOCATIVE/RISKY/BLOCKED review states internally.
 
 ## Out Of Scope
 

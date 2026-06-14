@@ -60,6 +60,7 @@ Returns available filter values:
 - tiers,
 - roles,
 - stat keys,
+- stat groups,
 - sort options.
 
 ### Optional Dev Endpoint
@@ -80,6 +81,7 @@ type PublicPlayerCardDto = {
   cost: number;
   position: VisiblePosition;
   broadLine: BroadLine;
+  statProfile: "OUTFIELD" | "GOALKEEPER";
   nation: {
     id: string;
     code: string;
@@ -94,15 +96,25 @@ type PublicPlayerCardDto = {
     label: string;
   };
   role: CardRole;
-  stats: {
-    pace: number;
-    shooting: number;
-    passing: number;
-    dribbling: number;
-    defending: number;
-    physical: number;
-    goalkeeping: number;
-  };
+  stats:
+    | {
+        profile: "OUTFIELD";
+        pace: number;
+        shooting: number;
+        passing: number;
+        dribbling: number;
+        defending: number;
+        physical: number;
+      }
+    | {
+        profile: "GOALKEEPER";
+        diving: number;
+        handling: number;
+        kicking: number;
+        reflexes: number;
+        speed: number;
+        positioning: number;
+      };
   materialKey: string;
   animationLevel: "none" | "subtle" | "medium" | "premium";
 };
