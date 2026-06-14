@@ -9,7 +9,7 @@ Implement:
 - pnpm monorepo,
 - shared domain package,
 - NestJS API,
-- Prisma/PostgreSQL schema by default, or Drizzle/PostgreSQL if the ORM spike changes the decision,
+- Drizzle/PostgreSQL schema,
 - seed data,
 - card query endpoints,
 - Vite React client,
@@ -50,7 +50,7 @@ For now, all cards are visible. Undiscovered mystery cards come later.
 
 1. Scaffold `apps/api`.
 2. Add `/health`.
-3. Add ORM schema for first-slice tables.
+3. Add Drizzle schema for first-slice tables.
 4. Add card seed data.
 5. Add card repository.
 6. Add card query use cases.
@@ -91,7 +91,7 @@ For now, all cards are visible. Undiscovered mystery cards come later.
 
 - `pnpm install` works.
 - API starts locally and returns `GET /health`.
-- ORM migration can run against Neon.
+- Drizzle migration can run against Neon.
 - Seed script creates enough card data to exercise filters.
 - `GET /cards` supports the MVP filters.
 - Frontend Collection page loads API data.

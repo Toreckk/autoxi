@@ -9,10 +9,8 @@ autoxi/
     web/
   packages/
     domain/
+    db/
     config/
-  prisma/ or db/
-    schema and migrations
-    seed.ts
   docs/
   package.json
   pnpm-workspace.yaml
@@ -57,7 +55,20 @@ Shared domain types and pure logic:
 - stat validation,
 - safe public card contracts.
 
-This package should not import NestJS, Prisma, Drizzle, React, or browser-only code.
+This package should not import NestJS, Drizzle, React, or browser-only code.
+
+### `packages/db`
+
+Drizzle/PostgreSQL package:
+
+- Drizzle schema,
+- Drizzle client factory,
+- DB connection helpers,
+- migrations,
+- seed helpers,
+- future DB test utilities.
+
+The API depends on this package instead of scattering database setup through app modules.
 
 ### `packages/config`
 
@@ -67,9 +78,3 @@ Optional shared config:
 - ESLint config,
 - Prettier config,
 - shared constants if they are not domain-specific.
-
-### `prisma` or `db`
-
-Database schema, migrations, and seed scripts.
-
-If Prisma is used, keep `prisma/` at the repo root so the generated client and migrations are easy to manage across API and seed commands. If Drizzle is used, keep schema and migration config in a root `db/` folder or an API-local `src/db/` folder, then document the choice clearly.

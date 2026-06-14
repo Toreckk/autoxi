@@ -14,6 +14,7 @@ The game should use fictional public names while preserving broad football-histo
 - `SAFE`: fully fictional identity.
 - `EVOCATIVE`: same nation/year/position/archetype/rating, but clearly different name.
 - `RISKY`: too close to the original name; avoid in commercial builds.
+- `BLOCKED`: exact real name, famous nickname, protected phrase, or too close to a globally famous player.
 
 ## Pipeline
 
@@ -26,6 +27,32 @@ The game should use fictional public names while preserving broad football-histo
 7. Reject risky candidates.
 8. Persist alias with risk metadata.
 9. Require manual approval for high-tier cards.
+
+## Safer Recognition Pattern
+
+Recognition should mostly come from:
+
+```text
+nation + World Cup year + position + rating + tier + role
+```
+
+Avoid one-letter changes, famous nicknames, or names that depend on being obviously close to the raw identity.
+
+Example:
+
+```text
+Internal source context:
+Germany 1974 Icon CB/Sweeper, 97, Commander
+
+Public identity:
+F. Behrmann
+Germany
+1974
+CB/Sweeper
+Icon
+Commander
+97
+```
 
 ## Implementation Notes
 
@@ -43,4 +70,3 @@ Later version:
 - phonetic similarity checks,
 - admin review UI,
 - audit reports for commercial review.
-

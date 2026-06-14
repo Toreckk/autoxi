@@ -6,18 +6,29 @@ Recommended NestJS structure:
 apps/api/src/
   main.ts
   app.module.ts
-  health/
-    health.controller.ts
-  cards/
-    cards.module.ts
-    cards.controller.ts
-    cards.service.ts
-    cards.repository.ts
-    dto/
-      card-query.dto.ts
-  db/
-    db.module.ts
-    db.service.ts
+  modules/
+    health/
+    cards/
+      cards.controller.ts
+      cards.repository.ts
+      list-cards.use-case.ts
+      get-card.use-case.ts
+      get-card-filters-meta.use-case.ts
+      cards.mapper.ts
+      cards.dto.ts
+      cards.errors.ts
+    database/
+      database.module.ts
+      database.provider.ts
+    config/
+    observability/
+      observability.module.ts
+      telemetry.port.ts
+      analytics.port.ts
+      error-reporting.port.ts
+      console-telemetry.adapter.ts
+      console-analytics.adapter.ts
+      console-error-reporting.adapter.ts
   common/
     errors/
       app-error.ts
@@ -42,7 +53,7 @@ apps/api/src/
 
 ### Repository
 
-- Encapsulate ORM queries.
+- Encapsulate Drizzle queries.
 - Return promises or small TaskEither wrappers.
 - Map database records to public DTOs.
 
@@ -52,4 +63,4 @@ Shared pure code should live in `packages/domain`, not inside the API app.
 
 ## Public-Safe Mapping
 
-Create a single mapping function from database card records to `PublicCardDto`. This helps ensure raw names are never accidentally returned.
+Create a single mapping function from database card records to `PublicPlayerCardDto`. This helps ensure raw names are never accidentally returned.

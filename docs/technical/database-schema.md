@@ -1,23 +1,8 @@
 # Database Schema
 
-The first schema should support card browsing now and leave room for ingestion, audit, discovery, and later run systems.
+The first schema supports card browsing and public-safe aliases. It should stay narrow for Phase 1.
 
 ## Immediate Tables
-
-### `users`
-
-Purpose: dev-only user model now, real accounts later.
-
-Columns:
-
-- `id uuid primary key`
-- `display_name text`
-- `created_at timestamptz`
-- `updated_at timestamptz`
-
-Indexes:
-
-- primary key on `id`
 
 ### `nations`
 
@@ -71,7 +56,7 @@ Columns:
 
 Use JSONB for provider-specific import metadata because each source may differ.
 
-### `source_players_raw`
+### `source_players`
 
 Purpose: private raw source player data and names.
 
@@ -79,16 +64,17 @@ Columns:
 
 - `id uuid primary key`
 - `source_import_id uuid`
-- `source_player_key text`
+- `source_provider text`
+- `source_external_id text`
 - `raw_name text`
-- `raw_nation text nullable`
+- `raw_nationality text nullable`
 - `raw_position text nullable`
-- `raw_payload jsonb`
+- `raw_payload_json jsonb`
 - `created_at timestamptz`
 
 Indexes:
 
-- unique `(source_import_id, source_player_key)`
+- unique `(source_provider, source_external_id)`
 - index `raw_name`
 
 Raw names must never be returned by public card endpoints.
@@ -101,15 +87,17 @@ Columns:
 
 - `id uuid primary key`
 - `identity_key text unique`
-- `primary_nation_id uuid`
-- `source_player_raw_id uuid nullable`
+- `source_player_id uuid nullable`
+- `nationality_id uuid`
+- `canonical_position text nullable`
+- `notes text nullable`
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
 Indexes:
 
 - unique `identity_key`
-- index `primary_nation_id`
+- index `nationality_id`
 
 ### `player_aliases`
 
@@ -119,25 +107,27 @@ Columns:
 
 - `id uuid primary key`
 - `player_identity_id uuid`
-- `public_name text`
+- `display_name text`
 - `short_name text`
 - `locale_hint text nullable`
 - `risk_level enum`
-- `risk_score numeric`
-- `approval_status enum`
-- `approved_at timestamptz nullable`
+- `generation_method text`
+- `is_approved boolean`
+- `reviewed_by text nullable`
+- `reviewed_at timestamptz nullable`
+- `notes text nullable`
 - `created_at timestamptz`
 - `metadata jsonb`
 
 Indexes:
 
 - index `player_identity_id`
-- index `approval_status`
-- unique `(player_identity_id, public_name)`
+- index `is_approved`
+- unique `(player_identity_id, display_name)`
 
 Use JSONB for alias generation notes and risk details because scoring signals may change.
 
-### `cards`
+### `player_cards`
 
 Purpose: public collectible card versions.
 
@@ -147,17 +137,15 @@ Columns:
 - `player_identity_id uuid`
 - `nation_id uuid`
 - `world_cup_edition_id uuid`
-- `approved_alias_id uuid`
+- `alias_id uuid`
 - `rating int`
 - `tier enum`
 - `tier_override enum nullable`
-- `visible_position enum`
+- `position enum`
 - `broad_line enum`
 - `role enum`
 - `cost int`
-- `material_key text`
-- `animation_level int`
-- `is_public boolean`
+- `material_key enum`
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
@@ -165,13 +153,13 @@ Indexes:
 
 - index `rating`
 - index `tier`
-- index `visible_position`
+- index `position`
 - index `broad_line`
 - index `nation_id`
 - index `world_cup_edition_id`
 - unique `(player_identity_id, world_cup_edition_id)`
 
-### `card_stats`
+### `player_card_stats`
 
 Purpose: hidden stat block for cards.
 
@@ -190,7 +178,7 @@ Constraints:
 
 - each stat between 0 and 99
 
-### `card_tags`
+### Optional: `card_tags`
 
 Purpose: optional flexible labels for future filtering.
 
@@ -205,39 +193,32 @@ Indexes:
 - unique `(card_id, tag)`
 - index `tag`
 
-### `collection_discovery`
+### Optional: `analytics_events`
 
-Purpose: future discovered-card state per user.
-
-Columns:
-
-- `user_id uuid`
-- `card_id uuid`
-- `discovered_at timestamptz`
-
-Indexes:
-
-- primary key `(user_id, card_id)`
-- index `card_id`
-
-Unused in the MVP Collection page.
-
-### `balance_versions`
-
-Purpose: track card/stat balance versions.
+Purpose: local analytics event sink for Phase 1 if needed.
 
 Columns:
 
 - `id uuid primary key`
-- `version text unique`
-- `status text`
-- `notes text nullable`
+- `event_name text`
+- `event_version int`
+- `anonymous_id text`
+- `user_id uuid nullable`
+- `session_id text`
+- `route text nullable`
+- `properties jsonb`
 - `created_at timestamptz`
 
 ## Later Tables
 
 Plan but do not implement yet:
 
+- `users`
+- `collection_discovery`
+- `card_tags`
+- `card_tag_links`
+- `data_versions`
+- `balance_versions`
 - `runs`
 - `run_card_instances`
 - `squad_slots`
@@ -248,4 +229,3 @@ Plan but do not implement yet:
 - `match_events`
 - `rankings`
 - `run_history`
-

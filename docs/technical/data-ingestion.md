@@ -23,7 +23,7 @@ Use public EA FC/FIFA-style or Kaggle rating datasets only for prototype researc
 
 1. Read source data.
 2. Create `source_imports` record.
-3. Store raw player rows in `source_players_raw`.
+3. Store raw player rows in `source_players`.
 4. Normalize nations and World Cup editions.
 5. Create internal `player_identities`.
 6. Generate public aliases.
@@ -59,4 +59,3 @@ Star, World Class, Hero, and Icon cards should be manually curated.
 - High-tier cards require manual approval.
 - Alias risk scoring should be preserved for audit.
 - Do not ship research datasets unless commercial licensing is verified.
-

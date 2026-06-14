@@ -6,43 +6,32 @@ Observability should be designed in from the first slice, but implemented in lay
 
 Use a ports/adapters approach:
 
-- `TelemetryPort` for engineering telemetry: traces, metrics, structured logs.
+- `TelemetryPort` for engineering telemetry: timing, counters, structured logs.
 - `AnalyticsPort` for product/game events: funnels, drop-off, balancing, player behavior.
 - `ErrorReportingPort` for client and server exceptions.
 - `SessionReplayPort` later for opt-in beta session replay.
 
-Start with console/local adapters and OpenTelemetry-compatible instrumentation. Add Grafana-compatible dashboards once there is a backend and real API traffic. Keep the ports stable so we can move from a free stack to Datadog, Grafana Cloud, PostHog Cloud, Sentry, or another provider without rewriting game logic.
+Phase 1 uses console/local adapters only. Do not set up Sentry, PostHog, Grafana, Datadog, OpenTelemetry Collector, or other external observability infrastructure yet.
 
 ## Tooling Strategy
 
-### Engineering Observability
+Phase 1:
 
-Use OpenTelemetry as the main standard. OpenTelemetry is open source and vendor/tool agnostic, and covers generation, collection, and export of traces, metrics, and logs. It also gives us a path to export to open-source tools or commercial platforms later.
+- structured console logging,
+- React ErrorBoundary,
+- NestJS global exception filter,
+- console telemetry adapter,
+- console analytics adapter,
+- console error-reporting adapter,
+- optional `analytics_events` table.
 
-Free/open-source first:
+Later:
 
-- OpenTelemetry SDKs for Node/NestJS and browser where appropriate.
-- OpenTelemetry Collector later when deployment exists.
-- Grafana for dashboards.
-- Prometheus or Grafana Mimir for metrics.
-- Loki for logs.
-- Tempo for traces.
-
-Paid later:
-
-- Datadog can ingest OpenTelemetry-instrumented application data, so using OpenTelemetry now keeps that migration realistic.
-
-### Product and Game Analytics
-
-Grafana can visualize metrics and query databases, but it is not the whole product analytics story. For player frustration, drop-off, funnels, retention, cohorts, and session replay, use a product analytics layer.
-
-Good first options:
-
-- PostHog for product analytics, feature flags, experiments, session replay, surveys, and error tracking.
-- A custom `analytics_events` table for early local development if we want zero SaaS dependency.
-- Later ClickHouse or a managed warehouse if event volume grows.
-
-Recommendation: implement the `AnalyticsPort` first, then choose an adapter when the first real playtest starts. For the Collection-only slice, a console adapter plus optional database event sink is enough.
+- OpenTelemetry for vendor-neutral telemetry,
+- Grafana/Tempo/Loki/Prometheus for open dashboards,
+- Sentry for error reporting,
+- PostHog for product analytics/session replay/experiments,
+- Datadog if a paid all-in-one platform becomes worthwhile.
 
 ## Why Not "As Much Data As Possible" Literally
 
@@ -51,18 +40,19 @@ Collect rich data, but do it intentionally. Too much unstructured telemetry beco
 Rules:
 
 - Define an event taxonomy before emitting events everywhere.
+- Every analytics event must have an `eventVersion`.
 - Avoid PII unless absolutely necessary.
 - Never log raw source player names in public/client telemetry.
-- Never log secrets, database URLs, auth tokens, or full request bodies by default.
+- Never log source payloads in telemetry.
+- Never log database URLs, tokens, auth secrets, or full request bodies by default.
 - Use stable anonymous user/session IDs.
-- Sample noisy events.
-- Add retention policies.
+- Sample noisy events later if needed.
+- Add retention policies before public release.
 - Separate dev/internal telemetry from production telemetry.
-- Add consent controls for session replay and detailed client analytics, especially before public release.
+- Add consent controls before session replay or detailed client analytics.
+- Add analytics opt-out later.
 
 ## Ports
-
-Example TypeScript shape:
 
 ```ts
 export type TelemetryAttributes = Record<string, string | number | boolean | null>;
@@ -79,8 +69,8 @@ export interface TelemetryPort {
 }
 
 export interface AnalyticsPort {
-  identify(input: { anonymousId: string; userId?: string }): void;
-  track(event: GameAnalyticsEvent): void;
+  identify(input: { anonymousId: string; userId?: string | null }): void;
+  track(event: AnalyticsEvent): void;
   flush(): Promise<void>;
 }
 
@@ -92,114 +82,148 @@ export interface ErrorReportingPort {
 
 Keep these ports in an infrastructure-facing package or app layer, not in pure domain code. Pure domain functions can return facts that callers turn into analytics events.
 
-## First Event Taxonomy
+## Event Versioning
 
-### App and Session
+Every analytics event must include:
+
+```ts
+type AnalyticsEvent = {
+  eventName: string;
+  eventVersion: number;
+  anonymousId: string;
+  userId?: string | null;
+  sessionId: string;
+  timestamp: string;
+  route?: string | null;
+  properties: Record<string, unknown>;
+  appVersion?: string;
+  environment: "local" | "development" | "staging" | "production";
+};
+```
+
+## Phase 1 Analytics Events
+
+Implement or stub:
 
 - `app_started`
-- `session_started`
-- `session_ended`
-- `route_viewed`
-- `client_error`
-- `api_error`
-
-### Collection
-
+- `main_menu_viewed`
+- `main_menu_option_clicked`
 - `collection_viewed`
-- `collection_search_changed`
+- `collection_cards_loaded`
 - `collection_filter_changed`
+- `collection_search_changed`
 - `collection_sort_changed`
 - `collection_page_changed`
+- `card_clicked`
 - `card_detail_opened`
 - `card_detail_closed`
-- `collection_empty_results_seen`
-- `collection_load_failed`
-
-### Performance
-
-- `api_request_duration`
 - `api_request_failed`
-- `cards_query_duration`
-- `cards_query_result_count`
-- `frontend_route_load_duration`
-- `card_grid_render_duration`
+- `api_request_slow`
+- `client_error_captured`
 
-### Later Gameplay
+## Funnels
 
-- `run_started`
-- `formation_selected`
-- `captain_selected`
-- `initial_draft_completed`
-- `match_started`
-- `match_completed`
-- `scouting_window_opened`
-- `scouting_card_bought`
-- `scouting_card_sold`
-- `scouting_reroll_clicked`
-- `scouting_freeze_toggled`
-- `scout_xp_bought`
-- `run_completed`
-- `run_abandoned`
+Phase 1 Collection funnel:
 
-## Dashboards
+```text
+app_started
+-> main_menu_viewed
+-> main_menu_option_clicked(Collection)
+-> collection_viewed
+-> collection_cards_loaded
+-> collection_filter_changed or card_detail_opened
+```
 
-### Phase 1 Dashboard
+Future first-run funnel:
 
-- API health and uptime.
-- Request rate.
-- Error rate.
-- p50/p95/p99 API latency.
-- Card query latency.
-- Collection page load failures.
-- Collection filter usage.
-- Empty-result rate.
+```text
+app_started
+-> main_menu_viewed
+-> play_solo_clicked
+-> run_started
+-> formation_selected
+-> captain_selected
+-> initial_draft_completed
+-> match_started
+-> match_completed
+-> scouting_window_opened
+```
 
-### Playtest Dashboard
+Future ranked funnel:
 
-- Session count.
-- Main menu to Collection conversion.
-- Collection interactions per session.
-- Card detail opens.
-- Client errors by route.
-- API errors by endpoint.
-- Slow frontend route loads.
+```text
+app_started
+-> play_online_ranked_clicked
+-> matchmaking_started
+-> match_started
+-> match_completed
+-> rank_result_viewed
+```
 
-### Gameplay Dashboard Later
+## Optional Local Analytics Table
 
-- Run starts and completions.
-- Run abandonment by stage.
-- Average run length.
-- Win/loss distribution.
-- Scouting rerolls per run.
-- Cards bought/sold by tier.
-- Match simulation error rate.
-- Rank distribution.
-- Economy balance metrics.
+Optional Phase 1 table:
 
-## Phase Placement
+```text
+analytics_events
+- id
+- event_name
+- event_version
+- anonymous_id
+- user_id nullable
+- session_id
+- route nullable
+- properties jsonb
+- created_at
+```
 
-Add the foundation in Phase 1:
+Adapters:
 
-- define ports,
-- add no-op/console adapters,
-- add request IDs/correlation IDs,
-- add structured logging,
-- instrument health and card endpoints,
-- emit Collection page analytics events.
+- `ConsoleAnalyticsAdapter`
+- `DbAnalyticsAdapter` optional
+- `NoopAnalyticsAdapter` for tests
 
-Add real local dashboards in Phase 2 or early Phase 3:
+## Dashboards Later
 
-- OpenTelemetry Collector when deployment shape is clearer,
-- Grafana dashboards,
-- persisted analytics event sink,
-- frontend error reporting.
+Phase 2 or early Phase 3 can add Grafana-compatible dashboards for:
 
-Add session replay and deeper product analytics during closed alpha/playtests:
+- API health and uptime,
+- request rate,
+- error rate,
+- p50/p95/p99 API latency,
+- card query latency,
+- Collection page load failures,
+- Collection filter usage,
+- empty-result rate.
 
-- consent/opt-in controls,
-- redaction rules,
-- replay sampling,
-- frustration signals such as repeated failed clicks, rage clicks, rapid quit after match, repeated rerolls, or abandoned runs.
+Gameplay dashboards later:
+
+- run starts and completions,
+- run abandonment by stage,
+- average run length,
+- win/loss distribution,
+- scouting rerolls per run,
+- cards bought/sold by tier,
+- card pick/sell/win rates,
+- match simulation error rate,
+- rank distribution,
+- economy balance metrics.
+
+## Privacy and Safety Checklist
+
+Hard rules:
+
+- No raw player names in telemetry.
+- No source payloads in telemetry.
+- No DB URLs/tokens in logs.
+- No auth tokens in logs.
+- No full request bodies by default.
+- No raw imported data in analytics.
+- No source mapping in public events.
+- No alias risk notes in public API responses.
+- No session replay before consent.
+- No PII unless necessary.
+- Add analytics opt-out later.
 
 ## Sources
 

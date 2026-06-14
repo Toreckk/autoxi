@@ -22,6 +22,19 @@ Test:
 - public DTO mapping excludes raw names,
 - card detail 404 behavior.
 
+Public card API safety tests must assert `GET /cards` and `GET /cards/:id` never include:
+
+- `rawName`
+- `sourceName`
+- `sourcePlayerId`
+- `sourceExternalId`
+- `rawPayloadJson`
+- `sourceImportId`
+- `riskScore`
+- `approvalNotes`
+- `generationPrompt`
+- `internalSourceName`
+
 ## Frontend Tests
 
 Test:
@@ -41,4 +54,3 @@ Use browser screenshots for the card grid after the frontend exists. Verify:
 - reduced motion is respected,
 - lower tiers do not over-animate,
 - high-tier material effects are visible but not overwhelming.
-

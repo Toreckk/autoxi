@@ -2,7 +2,7 @@
 
 The card direction is football-card-readable and material-driven. It can borrow the broad readability conventions of sports cards, while staying original enough to avoid copying FUT-style frames, proprietary silhouettes, real footballer photos, official tournament branding, club branding, or player likenesses.
 
-The strongest visual inspiration should come from premium weapon-skin materials: phase shifts, Doppler-like gradients, emerald, ruby, sapphire/cobalt, black pearl, ivory/gold, pearlescent sheen, and animated light sweeps. The result should feel like a collectible football card made out of rare materials, not a clone of an existing football-card product.
+The strongest visual inspiration should come from premium material treatments: phase shifts, emerald, ruby, sapphire/cobalt, black pearl, ivory/gold, pearlescent sheen, and animated light sweeps. The result should feel like a collectible football card made out of rare materials, not a clone of an existing football-card product.
 
 ## Visual Reference
 
@@ -37,7 +37,7 @@ Shared props:
 
 ```ts
 type PlayerCardProps = {
-  card: PublicCardDto;
+  card: PublicPlayerCardDto;
   size?: "full" | "compact" | "mini";
   animationMode?: "none" | "subtle" | "full" | "hover";
   discovered?: boolean;
@@ -121,7 +121,7 @@ Use these exact tier mappings:
 | 1 | Squad Player | matte graphite / carbon weave |
 | 2 | Starter | brushed steel / cyan steel phase |
 | 3 | Key Player | emerald composite / green phase |
-| 4 | Star | amethyst/violet Doppler-like phase |
+| 4 | Star | amethyst/violet phase |
 | 5 | World Class | cobalt/sapphire phase with restrained gold trim |
 | 6 | Hero | ruby/crimson high-sheen material |
 | 7 | Icon | black pearl or ivory/gold/pearl material with strongest premium glow |
@@ -147,6 +147,7 @@ This is not legal advice, but the implementation should reduce avoidable IP/trad
 - Do not use official FIFA, EA, FUT, World Cup, federation, club, Counter-Strike, or CS:GO branding.
 - Use generic internal material names in code where possible, such as `ruby-hero` or `black-pearl-icon`.
 - Let the inspiration show through color, material, lighting, and motion rather than copied shapes or names.
+- Avoid production-facing labels like `Doppler`, `Crimson Web`, `Obsidian Pearl`, `Lore Master`, `FUT`, or `FIFA`.
 
 ## Performance Rules
 

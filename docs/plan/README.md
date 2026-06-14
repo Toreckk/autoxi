@@ -24,7 +24,7 @@ The Collection page exercises the important early architecture without requiring
 - shadcn/ui + Tailwind for UI primitives and styling.
 - NestJS for a structured backend API.
 - PostgreSQL hosted on Neon for the first Windows-friendly setup.
-- Prisma by default for schema, migrations, generated client, and seed workflow; Drizzle remains a serious candidate if a short spike proves it feels better.
+- Drizzle for schema, migrations, PostgreSQL queries, and seed workflow.
 - Zod for shared runtime validation.
 - fp-ts in the functional core and ingestion pipelines.
 - TanStack Query for frontend server state.
@@ -59,8 +59,8 @@ The first setup should avoid Docker entirely:
 
 1. Create a free Neon PostgreSQL project.
 2. Copy the pooled and direct connection strings.
-3. Add local `.env` files for API and the ORM.
-4. Run migrations against Neon.
+3. Add local `.env.local` for API, web, and Drizzle.
+4. Run Drizzle migrations against Neon.
 5. Seed the database.
 6. Start the NestJS API locally.
 7. Start the Vite client locally.
@@ -81,7 +81,7 @@ Hosted free-tier limits can change, so Neon limits should be checked before rely
 1. Scaffold pnpm workspace and package boundaries.
 2. Create shared card domain models and Zod schemas.
 3. Scaffold NestJS API with health endpoint.
-4. Add ORM schema for first-slice tables.
+4. Add Drizzle schema for first-slice tables.
 5. Configure Neon connection and migration scripts.
 6. Add seed data with fictional names only.
 7. Add card list, detail, and metadata endpoints.

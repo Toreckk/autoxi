@@ -8,8 +8,19 @@ coverage/
 
 # Environment files
 .env
+.env.local
 .env.*
+
+apps/*/.env
+apps/*/.env.local
+apps/*/.env.*
+packages/*/.env
+packages/*/.env.local
+packages/*/.env.*
+
 !.env.example
+!apps/*/.env.example
+!packages/*/.env.example
 
 # Logs
 *.log
@@ -27,4 +38,3 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 .turbo/
-

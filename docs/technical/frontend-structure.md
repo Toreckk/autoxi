@@ -6,30 +6,36 @@ Recommended React/Vite structure:
 apps/web/src/
   main.tsx
   app/
-    App.tsx
     router.tsx
-    queryClient.ts
-  pages/
-    MainMenuPage.tsx
-    CollectionPage.tsx
+    providers.tsx
+    query-client.ts
   features/
+    menu/
+    collection/
     cards/
-      api/
-        cardsApi.ts
-        cardsQueries.ts
-      components/
-        PlayerCardFull.tsx
-        PlayerCardCompact.tsx
-        PlayerCardMini.tsx
-        PlayerCardSkeleton.tsx
-        CardDetailDrawer.tsx
-        CardGrid.tsx
-        CardFilters.tsx
-      styles/
-        player-card.css
+  components/
+    layout/
+    player-card/
+      PlayerCardFull.tsx
+      PlayerCardCompact.tsx
+      PlayerCardMini.tsx
+      PlayerCardSkeleton.tsx
+      CardDetailDrawer.tsx
+  lib/
+    api/
+    observability/
   components/
     ui/
 ```
+
+## Routes
+
+- `/`
+- `/collection`
+- `/history` placeholder
+- `/settings` placeholder
+- `/play-solo` placeholder
+- `/play-online-ranked` placeholder
 
 ## Main Menu
 
@@ -55,7 +61,8 @@ The page should include:
 - loading skeletons,
 - error state,
 - empty state,
-- card detail drawer/dialog.
+- card detail drawer/dialog,
+- analytics events for menu and Collection interactions.
 
 ## Data Fetching
 
@@ -64,6 +71,12 @@ Use TanStack Query:
 - query key should include normalized filters,
 - keep previous data during pagination/filter changes where useful,
 - expose loading and error states cleanly.
+
+## Error Handling
+
+Add a React ErrorBoundary for route/render errors and report captured errors through `ErrorReportingPort`.
+
+Frontend failed API calls should emit `api_request_failed`. Slow API calls should emit `api_request_slow`.
 
 ## Shared Validation
 

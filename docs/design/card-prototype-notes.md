@@ -2,7 +2,7 @@
 
 The original `cards-code.md` prototype was a static HTML/Tailwind page called "Aether Battles - Card Tiers". It should be treated as visual reference, not production structure.
 
-The production direction is an original hybrid: sports-card readability, a hint of FUT-style information hierarchy, and premium material treatments inspired by high-tier skin finishes such as phase gradients, ruby, emerald, sapphire/cobalt, and black pearl.
+The production direction is an original hybrid: sports-card readability, a hint of familiar football-card information hierarchy, and premium material treatments inspired by phase gradients, ruby, emerald, sapphire/cobalt, and black pearl.
 
 ## Useful Code Ideas
 
@@ -62,6 +62,7 @@ Prototype flow effect:
 - Replace prototype tier colors with the final tier material mapping.
 - Avoid exact FUT frame shapes, branded terminology, or copied trade dress.
 - Avoid official Counter-Strike or CS:GO skin names in public-facing UI.
+- Avoid production-facing labels like `Doppler`, `Crimson Web`, `Obsidian Pearl`, `Lore Master`, `FUT`, or `FIFA`.
 - Add reduced-motion handling.
 - Prefer hover-triggered animation for large grids.
 - Keep the card name readable at all sizes.

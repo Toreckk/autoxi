@@ -71,9 +71,9 @@ Only expose in development. It can help verify seed counts and data versions.
 ## Public Card DTO
 
 ```ts
-type PublicCardDto = {
+type PublicPlayerCardDto = {
   id: string;
-  publicName: string;
+  displayName: string;
   shortName: string;
   rating: number;
   tier: CardTier;
@@ -83,11 +83,13 @@ type PublicCardDto = {
   nation: {
     code: string;
     name: string;
-    flag: string | null;
+    flag: string;
   };
   worldCup: {
+    id: string;
     host: string;
     year: number;
+    label: string;
   };
   role: CardRole;
   stats: {
@@ -99,8 +101,8 @@ type PublicCardDto = {
     physical: number;
     goalkeeping: number;
   };
-  cardMaterialKey: string;
-  animationLevel: number;
+  materialKey: string;
+  animationLevel: "none" | "subtle" | "medium" | "premium";
 };
 ```
 
@@ -122,10 +124,15 @@ Initial sort keys:
 
 Public endpoints must not return:
 
-- raw names,
-- source import payloads,
-- source IDs,
-- alias risk score,
-- approval metadata,
-- private audit mapping.
+- `rawName`
+- `sourceName`
+- `sourcePlayerId`
+- `sourceExternalId`
+- `rawPayloadJson`
+- `sourceImportId`
+- `riskScore`
+- `approvalNotes`
+- `generationPrompt`
+- `internalSourceName`
 
+Public API safety tests must assert these fields are absent from both `GET /cards` and `GET /cards/:id`.

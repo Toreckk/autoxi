@@ -21,7 +21,7 @@ Seed at least 40 cards so filters and pagination are meaningful.
 
 - Use fictional public names only.
 - Do not include real player names in public seed card fields.
-- If raw source fields are included for testing, keep them in `source_players_raw` only.
+- If raw source fields are included for testing, keep them in `source_players` only.
 - Do not return raw source records from public endpoints.
 
 ## Suggested Seed Distribution
@@ -35,4 +35,3 @@ Seed at least 40 cards so filters and pagination are meaningful.
 - 2 Icon
 
 This gives the UI enough high-tier material examples without flooding the first dataset.
-

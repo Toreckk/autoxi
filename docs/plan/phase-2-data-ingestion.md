@@ -36,7 +36,7 @@ Important: do not assume commercial rights for EA/FIFA/Kaggle-style rating datas
 ## Pipeline
 
 1. Import raw source files.
-2. Store raw source records in `source_players_raw`.
+2. Store raw source records in `source_players`.
 3. Normalize tournaments, nations, teams, and positions.
 4. Create stable `player_identities`.
 5. Generate fictional public aliases.

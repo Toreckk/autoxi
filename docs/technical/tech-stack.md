@@ -10,7 +10,7 @@
 - React Router for navigation
 - NestJS backend
 - PostgreSQL database
-- Prisma ORM by default; Drizzle is a documented alternative
+- Drizzle ORM
 - Zod for shared validation
 - fp-ts for functional domain logic
 - Neon PostgreSQL for first hosted development
@@ -27,15 +27,13 @@ This game is UI-heavy: collection browsing, drafting, scouting, team building, h
 
 The first version does not need a real-time rendered match engine. The early game can be driven by cards, shop decisions, deterministic simulations, and rich UI screens. Godot may become useful later if match presentation becomes highly animated or spatial, but adding it now would slow the foundation.
 
-## ORM Decision: Prisma vs Drizzle
+## ORM Decision: Drizzle
 
 NestJS provides structured modules, controllers, services, dependency injection, and testing patterns. PostgreSQL gives strong relational modeling for cards, identities, aliases, runs, snapshots, matches, and rankings.
 
-Prisma remains the default because it is fast to start, has a mature migration workflow, generates a highly ergonomic type-safe client, and includes Prisma Studio for inspecting data. That is useful for a solo developer building the first vertical slice.
+Use Drizzle because it is lightweight, SQL-first, schema-in-TypeScript, and a good fit for explicit PostgreSQL modeling. It also fits the functional-core/use-case style: repositories can compose SQL-like queries and map database errors into typed application errors.
 
-Drizzle is a serious alternative because it is lightweight, SQL-like, schema-in-TypeScript, and serverless-friendly. It may fit especially well if we want more explicit SQL control and a smaller abstraction layer.
-
-Recommendation: keep Prisma for Phase 1 unless we deliberately run a short Drizzle spike before creating the schema. If Drizzle feels clearer after modeling `cards`, `card_stats`, and `player_aliases`, switch before migrations exist. Once the first migration lands, avoid changing ORM until a real constraint appears.
+The tradeoff is that Drizzle has less official NestJS integration than Prisma, so the API will provide a custom `DatabaseModule` around the typed Drizzle client from `packages/db`.
 
 ## REST vs tRPC
 

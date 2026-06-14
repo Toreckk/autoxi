@@ -32,7 +32,7 @@ Cards should avoid:
 Public card DTOs should include:
 
 - `id`
-- `publicName`
+- `displayName`
 - `shortName`
 - `rating`
 - `tier`
@@ -46,7 +46,7 @@ Public card DTOs should include:
 - `worldCup.year`
 - `role`
 - `stats`
-- `cardMaterialKey`
+- `materialKey`
 - `animationLevel`
 
 Public card DTOs must not include:
@@ -56,6 +56,8 @@ Public card DTOs must not include:
 - audit mapping,
 - alias risk notes,
 - unapproved aliases.
+
+Use `displayName` and `shortName` for public identity. Do not use a generic internal field named `name` for raw player names; use explicit private names such as `rawName`, `sourceName`, `internalSourceName`, or `rawSourceName`.
 
 ## Tiers
 
@@ -70,6 +72,18 @@ Public card DTOs must not include:
 | 7 | Icon | 95-99 | black pearl or ivory/gold/pearl with strongest premium glow |
 
 Tier is derived from rating unless manually overridden.
+
+## Costs
+
+| Tier | Cost |
+| --- | ---: |
+| Squad Player | 1 |
+| Starter | 2 |
+| Key Player | 3 |
+| Star | 5 |
+| World Class | 7 |
+| Hero | 10 |
+| Icon | 13 |
 
 ## Positions
 

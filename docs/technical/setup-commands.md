@@ -16,13 +16,11 @@ packages:
   - "packages/*"
 ```
 
-Create folders if Prisma is chosen:
+Create folders:
 
 ```powershell
-New-Item -ItemType Directory -Force apps, packages, prisma
+New-Item -ItemType Directory -Force apps, packages, packages\db, packages\domain, packages\config
 ```
-
-If Drizzle is chosen after the ORM spike, use `db` instead of `prisma` for root schema/migration files.
 
 ## 2. Create Apps
 
@@ -65,8 +63,15 @@ pnpm add zod fp-ts -F @autoxi/domain
 API:
 
 ```powershell
-pnpm add @nestjs/config @prisma/client zod fp-ts -F @autoxi/api
-pnpm add -D prisma tsx -F @autoxi/api
+pnpm add @nestjs/config zod fp-ts -F @autoxi/api
+pnpm add -D tsx -F @autoxi/api
+```
+
+DB:
+
+```powershell
+pnpm add drizzle-orm postgres zod fp-ts -F @autoxi/db
+pnpm add -D drizzle-kit tsx -F @autoxi/db
 ```
 
 Web:
@@ -82,32 +87,16 @@ shadcn setup should be run after Tailwind is configured:
 pnpm dlx shadcn@latest init
 ```
 
-## 5. ORM Setup
+## 5. Drizzle Setup
 
-### Prisma Default
-
-```powershell
-pnpm prisma init
-```
-
-Set `DATABASE_URL` and `DIRECT_URL` in `.env`, then:
+Set `DATABASE_URL` and `DATABASE_MIGRATION_URL` in `.env.local`, then:
 
 ```powershell
-pnpm prisma migrate dev --name init
-pnpm prisma db seed
-pnpm prisma studio
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed
+pnpm db:studio
 ```
-
-### Drizzle Alternative
-
-If the ORM spike chooses Drizzle, install Drizzle packages and initialize a `drizzle.config.ts` instead:
-
-```powershell
-pnpm add drizzle-orm postgres -F @autoxi/api
-pnpm add -D drizzle-kit -F @autoxi/api
-```
-
-Then create schema files under `db/` or `apps/api/src/db/` and use Drizzle Kit for migrations.
 
 ## 6. Development Scripts
 
@@ -122,9 +111,10 @@ Recommended root scripts:
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
-    "db:migrate": "pnpm prisma migrate dev",
-    "db:seed": "pnpm prisma db seed",
-    "db:studio": "pnpm prisma studio"
+    "db:generate": "pnpm -F @autoxi/db db:generate",
+    "db:migrate": "pnpm -F @autoxi/db db:migrate",
+    "db:seed": "pnpm -F @autoxi/db db:seed",
+    "db:studio": "pnpm -F @autoxi/db db:studio"
   }
 }
 ```

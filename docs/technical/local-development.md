@@ -8,7 +8,7 @@ The first setup should work on Windows without Docker or locally installed Postg
 2. Copy the connection string.
 3. Create local `.env` files.
 4. Install dependencies with pnpm.
-5. Run ORM migration.
+5. Run Drizzle migration.
 6. Seed the database.
 7. Start API.
 8. Start client.
@@ -21,10 +21,10 @@ Free-tier limits can change, so check Neon limits before relying on them for lon
 API:
 
 ```env
-DATABASE_URL="postgresql://..."
-DIRECT_URL="postgresql://..."
 NODE_ENV="development"
-PORT="3000"
+API_PORT="3000"
+DATABASE_URL="postgresql://..."
+DATABASE_MIGRATION_URL="postgresql://..."
 ```
 
 Web:
@@ -45,4 +45,4 @@ Verify:
 
 ## Optional Local PostgreSQL
 
-If hosted Postgres becomes annoying, install PostgreSQL locally with the official Windows installer. Use pgAdmin, Prisma Studio, or Drizzle Studio depending on the chosen ORM. This is optional and should not block the first slice.
+If hosted Postgres becomes annoying, install PostgreSQL locally with the official Windows installer. Use pgAdmin, Drizzle Studio, or another PostgreSQL client for inspection. This is optional and should not block the first slice.

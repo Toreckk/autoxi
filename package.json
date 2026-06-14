@@ -1,0 +1,18 @@
+{
+  "name": "autoxi",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm -F @autoxi/api dev",
+    "dev:web": "pnpm -F @autoxi/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm -F @autoxi/db db:generate",
+    "db:migrate": "pnpm -F @autoxi/db db:migrate",
+    "db:seed": "pnpm -F @autoxi/db db:seed",
+    "db:studio": "pnpm -F @autoxi/db db:studio"
+  }
+}

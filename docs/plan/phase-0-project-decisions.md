@@ -6,13 +6,15 @@ Goal: lock the initial direction before code structure spreads.
 
 - Use a web-first monorepo.
 - Use hosted Neon PostgreSQL first, not Docker.
-- Use Prisma as the default ORM for the first slice, with a short Drizzle spike before schema implementation if we want to test the newer SQL-like workflow.
+- Use Drizzle as the ORM for the first slice.
 - Use REST for the first API surface.
 - Use fictional public names in all client-facing responses.
 - Keep raw source names server-side and audit-only.
 - Build Collection before gameplay.
 - Use shadcn/ui and Tailwind for the client.
 - Keep card visuals football-card-readable, but original: lightly FUT-adjacent information layout, mixed with material/skin-inspired premium treatments.
+- Use hosted PostgreSQL for Phase 1; do not require Docker.
+- Add observability ports from the beginning with console adapters only.
 
 ## Open Naming
 
