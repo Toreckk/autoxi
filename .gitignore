@@ -19,8 +19,6 @@ packages/*/.env.local
 packages/*/.env.*
 
 !.env.example
-!apps/*/.env.example
-!packages/*/.env.example
 
 # Logs
 *.log

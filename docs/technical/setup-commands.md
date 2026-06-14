@@ -134,3 +134,5 @@ Verify:
 - `http://localhost:3000/cards`
 - `http://localhost:3000/cards/meta/filters`
 - `http://localhost:5173`
+
+Use the root `.env.example` as the single committed env template. Real values live only in ignored `.env.local`.

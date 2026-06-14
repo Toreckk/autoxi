@@ -41,13 +41,16 @@ Public card DTOs should include:
 - `broadLine`
 - `nation.code`
 - `nation.name`
-- `nation.flag`
+- `nation.flagCode`
+- optional local/frontend-derived `nation.flagUrl`
 - `worldCup.host`
 - `worldCup.year`
 - `role`
 - `stats`
 - `materialKey`
 - `animationLevel`
+
+The API should return `flagCode`; the frontend resolves `/flags/{flagCode}.svg` locally and falls back to `/flags/unknown.svg`.
 
 Public card DTOs must not include:
 

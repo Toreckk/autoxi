@@ -13,6 +13,7 @@ This documentation turns the original planning notes into smaller files that are
 - [Game Concept](game/concept.md)
 - [Player Cards](game/player-cards.md)
 - [Card Visual Design](design/player-card-visual-design.md)
+- [Flag Assets](design/flag-assets.md)
 - [Recommended Tech Stack](technical/tech-stack.md)
 - [ORM Decision](adr/0002-drizzle-over-prisma.md)
 - [Monorepo Structure](technical/monorepo-structure.md)

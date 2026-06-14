@@ -21,6 +21,7 @@ Build:
 - NestJS API with health and card query endpoints,
 - curated fictional seed data,
 - public-safe player identity and alias separation,
+- local nationality flag assets for card badges,
 - React/Vite frontend with main menu and Collection route,
 - reusable material-style player card components,
 - filters, sorting, pagination, loading, empty, and error states,
@@ -36,6 +37,7 @@ Do not build:
 - runs,
 - collection discovery,
 - auth,
+- external asset CDN/storage buckets for flags,
 - Tauri,
 - Steamworks,
 - Docker,
@@ -53,7 +55,7 @@ By the end of Phase 1:
 6. Public card responses never expose raw source names or private source mappings.
 7. The frontend shows a main menu.
 8. The Collection page loads, filters, sorts, paginates, and opens card details.
-9. Card visuals follow the material-card design direction.
+9. Card visuals follow the material-card design direction and use local flag assets.
 10. Basic telemetry, analytics, and error-reporting ports are wired to console adapters.
 
 ## Completion Checks

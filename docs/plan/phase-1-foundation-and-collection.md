@@ -16,6 +16,7 @@ Implement:
 - main menu,
 - Collection page,
 - reusable player card component,
+- local nationality flag assets for card badges,
 - filters, sorting, pagination, loading, empty, and error states,
 - observability and analytics ports with no-op/console adapters.
 
@@ -29,6 +30,7 @@ Do not implement:
 - real public player names,
 - official FIFA/EA/FUT/World Cup branding,
 - copied FUT-style frames or distinctive proprietary card shapes.
+- remote per-card flag URLs or external flag CDN/storage setup.
 
 ## User-Facing Flow
 

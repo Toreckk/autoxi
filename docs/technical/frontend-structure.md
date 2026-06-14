@@ -26,6 +26,8 @@ apps/web/src/
     observability/
   components/
     ui/
+  public/
+    flags/
 ```
 
 ## Routes
@@ -62,6 +64,7 @@ The page should include:
 - error state,
 - empty state,
 - card detail drawer/dialog,
+- local flag assets resolved from `nation.flagCode`,
 - analytics events for menu and Collection interactions.
 
 ## Data Fetching
@@ -81,4 +84,3 @@ Frontend failed API calls should emit `api_request_failed`. Slow API calls shoul
 ## Shared Validation
 
 Use `packages/domain` Zod schemas where practical. The frontend can use them for API response validation later, but the first version can start with typed DTOs and gradually add runtime parsing.
-

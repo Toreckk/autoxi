@@ -11,16 +11,20 @@ Purpose: normalized country/team identity for cards.
 Columns:
 
 - `id uuid primary key`
-- `code text unique`
-- `name text`
-- `flag_emoji text`
+- `iso2_code text nullable`
+- `iso3_code text nullable`
+- `fifa_code text nullable`
+- `display_name text`
+- `flag_code text`
+- `flag_asset_path text nullable`
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
 Indexes:
 
-- unique `code`
-- index `name`
+- unique `flag_code`
+- index `display_name`
+- index `fifa_code`
 
 ### `world_cup_editions`
 
@@ -215,10 +219,6 @@ Plan but do not implement yet:
 
 - `users`
 - `collection_discovery`
-- `card_tags`
-- `card_tag_links`
-- `data_versions`
-- `balance_versions`
 - `runs`
 - `run_card_instances`
 - `squad_slots`

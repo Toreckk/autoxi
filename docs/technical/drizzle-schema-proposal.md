@@ -50,6 +50,8 @@ Do not implement yet:
 - `team_snapshots`
 - `rankings`
 - `collection_discovery`
+- `users`
+- auth tables
 
 ## Enums
 
@@ -134,7 +136,7 @@ export const sourcePlayers = pgTable(
 
 Continue this style for:
 
-- `nations` with unique `code`,
+- `nations` with `iso2Code`, `iso3Code`, `fifaCode`, `displayName`, `flagCode`, and optional `flagAssetPath`,
 - `world_cup_editions` with unique `year`,
 - `player_identities` with unique `identityKey`,
 - `player_aliases` with `displayName`, `shortName`, `riskLevel`, `isApproved`, review fields, and notes,

@@ -81,9 +81,11 @@ type PublicPlayerCardDto = {
   position: VisiblePosition;
   broadLine: BroadLine;
   nation: {
+    id: string;
     code: string;
     name: string;
-    flag: string;
+    flagCode: string;
+    flagUrl?: string;
   };
   worldCup: {
     id: string;
@@ -136,3 +138,5 @@ Public endpoints must not return:
 - `internalSourceName`
 
 Public API safety tests must assert these fields are absent from both `GET /cards` and `GET /cards/:id`.
+
+`flagUrl`, if included, must be frontend-derived/local. Phase 1 should not return remote per-card flag URLs.
