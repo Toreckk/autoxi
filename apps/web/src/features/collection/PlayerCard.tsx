@@ -53,15 +53,18 @@ function PlayerCard({
 
   return (
     <Element
-      className={`player-card player-card--${size} material-${card.materialKey}${selected ? " is-selected" : ""}`}
+      className={`player-card player-card--${size} material-${card.materialKey} animation-${card.animationPreset}${selected ? " is-selected" : ""}`}
       data-animation={animationMode}
+      data-edition={card.editionKey}
       data-tier={card.tier}
       onClick={onClick}
       type={Element === "button" ? "button" : undefined}
       aria-label={`${card.displayName}, ${card.rating} ${card.position}`}
     >
+      <div className="player-card__outer-effect" aria-hidden="true" />
       <div className="player-card__inner">
         <div className="player-card__flow" aria-hidden="true" />
+        <div className="player-card__sheen" aria-hidden="true" />
         <div className="player-card__grain" aria-hidden="true" />
         <div className="player-card__top">
           <div className="rating-block">
@@ -71,6 +74,7 @@ function PlayerCard({
           <img className="flag" src={card.nation.flagUrl ?? flagSrc} alt="" />
         </div>
         <div className="player-card__name">
+          {card.editionLabel ? <span className="player-card__edition">{card.editionLabel}</span> : null}
           <strong>{discovered ? card.displayName : "Unknown"}</strong>
           <span>{card.role}</span>
         </div>

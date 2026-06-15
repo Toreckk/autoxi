@@ -9,9 +9,19 @@ import {
   playerIdentities,
   sourceImports,
   sourcePlayers,
+  worldCupAwards,
+  worldCupAwardWinners,
+  worldCupEditionTeamResults,
   worldCupEditions
 } from "./schema.js";
-import { deterministicUuid, seedCards, seedEditions, seedImportId, seedNations } from "./seedData.js";
+import {
+  deterministicUuid,
+  seedCards,
+  seedEditions,
+  seedImportId,
+  seedNations,
+  seedWorldCupAwards
+} from "./seedData.js";
 
 async function seed() {
   const { db, client } = createDbClient();
@@ -20,11 +30,14 @@ async function seed() {
     await db.transaction(async (tx) => {
       await tx.delete(playerCardGoalkeeperStats);
       await tx.delete(playerCardOutfieldStats);
+      await tx.delete(worldCupAwardWinners);
+      await tx.delete(worldCupEditionTeamResults);
       await tx.delete(playerCards);
       await tx.delete(playerAliases);
       await tx.delete(playerIdentities);
       await tx.delete(sourcePlayers);
       await tx.delete(sourceImports);
+      await tx.delete(worldCupAwards);
       await tx.delete(worldCupEditions);
       await tx.delete(nations);
 
@@ -48,6 +61,31 @@ async function seed() {
           hostCountryCode
         }))
       );
+
+      await tx.insert(worldCupAwards).values(
+        seedWorldCupAwards.map(([code, label, description]) => ({
+          id: deterministicUuid(`world-cup-award-${code}`),
+          code,
+          label,
+          description
+        }))
+      );
+
+      for (const [year, hostName, hostCountryCode] of seedEditions) {
+        const [edition] = await tx.select().from(worldCupEditions).where(eq(worldCupEditions.year, year)).limit(1);
+        const [hostNation] = await tx.select().from(nations).where(eq(nations.iso3Code, hostCountryCode)).limit(1);
+
+        if (edition && hostNation) {
+          await tx.insert(worldCupEditionTeamResults).values({
+            id: deterministicUuid(`edition-result-${year}-${hostCountryCode}-HOST`),
+            worldCupEditionId: edition.id,
+            nationId: hostNation.id,
+            resultCode: "HOST"
+          });
+        } else if (!edition) {
+          throw new Error(`Missing seed edition for ${hostName} ${year}`);
+        }
+      }
 
       await tx.insert(sourceImports).values({
         id: seedImportId,
@@ -117,6 +155,7 @@ async function seed() {
           broadLine: card.broadLine,
           statProfile: card.statProfile,
           role: card.role,
+          editionKey: card.editionKey,
           cost: card.cost,
           materialKey: card.materialKey
         });
@@ -140,6 +179,25 @@ async function seed() {
             dribbling: card.stats.dribbling,
             defending: card.stats.defending,
             physical: card.stats.physical
+          });
+        }
+
+        if (card.editionKey !== "NONE") {
+          const [award] = await tx.select().from(worldCupAwards).where(eq(worldCupAwards.code, card.editionKey)).limit(1);
+
+          if (!award) {
+            throw new Error(`Missing seed award ${card.editionKey}`);
+          }
+
+          await tx.insert(worldCupAwardWinners).values({
+            id: deterministicUuid(`award-winner-${card.identityKey}-${card.editionKey}`),
+            worldCupEditionId: edition.id,
+            awardId: award.id,
+            playerIdentityId: identityId,
+            playerCardId: cardId,
+            nationId: nation.id,
+            sourcePlayerId,
+            notes: "Fictional public-safe award winner for visual testing."
           });
         }
       }

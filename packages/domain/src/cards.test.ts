@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANIMATION_PRESETS,
+  CARD_EDITION_CONFIG,
+  CARD_EDITION_KEYS,
   CARD_TIERS,
   CARD_TIER_CONFIG_BY_CODE,
   GOALKEEPER_STAT_KEYS,
@@ -9,8 +12,11 @@ import {
   STAT_KEYS,
   VISIBLE_POSITIONS,
   animationLevelForTier,
+  animationPresetForTier,
   broadLineForPosition,
   deriveTier,
+  effectiveAnimationPresetForCard,
+  effectiveMaterialForCard,
   materialForTier,
   normalizeCardQuery,
   publicPlayerCardSchema,
@@ -97,7 +103,10 @@ describe("card domain helpers", () => {
       broadLine: "MIDFIELDER",
       role: "Creator",
       cost: 5,
-      materialKey: "violet-phase",
+      editionKey: "NONE",
+      editionLabel: null,
+      materialKey: "sapphire",
+      animationPreset: "shimmer",
       animationLevel: "medium",
       nation: {
         id: "00000000-0000-4000-8000-000000000002",
@@ -157,9 +166,40 @@ describe("card domain helpers", () => {
       expect(config.label.length).toBeGreaterThan(0);
       expect(config.cost).toBeGreaterThan(0);
       expect(MATERIAL_KEYS).toContain(materialForTier(tier));
+      expect(ANIMATION_PRESETS).toContain(animationPresetForTier(tier));
       expect(["none", "subtle", "medium", "premium"]).toContain(animationLevelForTier(tier));
       expect(tierRank(tier)).toBe(config.rank);
     }
+  });
+
+  it("uses the experimental base material mapping for normal tiers", () => {
+    expect(materialForTier("SQUAD_PLAYER")).toBe("brass");
+    expect(animationPresetForTier("SQUAD_PLAYER")).toBe("none");
+    expect(materialForTier("STARTER")).toBe("emerald");
+    expect(materialForTier("KEY_PLAYER")).toBe("amethyst");
+    expect(materialForTier("STAR")).toBe("sapphire");
+    expect(materialForTier("WORLD_CLASS")).toBe("ruby");
+    expect(materialForTier("HERO")).toBe("diamond");
+    expect(materialForTier("ICON")).toBe("pink-diamond");
+  });
+
+  it("has valid edition config and resolves special edition overrides", () => {
+    for (const key of CARD_EDITION_KEYS) {
+      const config = CARD_EDITION_CONFIG[key];
+      expect(config.key).toBe(key);
+      if (config.materialKeyOverride) expect(MATERIAL_KEYS).toContain(config.materialKeyOverride);
+      if (config.animationPresetOverride) expect(ANIMATION_PRESETS).toContain(config.animationPresetOverride);
+    }
+
+    expect(CARD_EDITION_CONFIG.NONE.materialKeyOverride).toBeNull();
+    expect(effectiveMaterialForCard("ICON", "NONE")).toBe("pink-diamond");
+    expect(effectiveAnimationPresetForCard("ICON", "NONE")).toBe("premium-glow");
+    expect(effectiveMaterialForCard("ICON", "GOLDEN_BOOT")).toBe("obsidian-gold");
+    expect(effectiveAnimationPresetForCard("ICON", "GOLDEN_BOOT")).toBe("premium-glow");
+    expect(effectiveMaterialForCard("ICON", "GOLDEN_BALL")).toBe("solar-gold");
+    expect(effectiveAnimationPresetForCard("ICON", "GOLDEN_BALL")).toBe("glow-pulse");
+    expect(effectiveMaterialForCard("ICON", "BEST_YOUNG_PLAYER")).toBe("rainbow-prism");
+    expect(effectiveMaterialForCard("ICON", "GOLDEN_GLOVE")).toBe("black-hole");
   });
 
   it("has broad-line metadata for every visible position", () => {

@@ -48,7 +48,10 @@ Public card DTOs should include:
 - `worldCup.year`
 - `role`
 - `stats`
+- `editionKey`
+- nullable `editionLabel`
 - `materialKey`
+- `animationPreset`
 - `animationLevel`
 
 The API should return `flagCode`; the frontend resolves `/flags/{flagCode}.svg` locally and falls back to `/flags/unknown.svg`.
@@ -67,15 +70,24 @@ Use `displayName` and `shortName` for public identity. Do not use a generic inte
 
 | Tier | Name | Rating Range | Material Direction |
 | --- | --- | --- | --- |
-| 1 | Squad Player | 55-67 | matte graphite / carbon weave |
-| 2 | Starter | 68-74 | brushed steel / cyan steel phase |
-| 3 | Key Player | 75-80 | emerald composite / green phase |
-| 4 | Star | 81-86 | amethyst/violet phase |
-| 5 | World Class | 87-90 | cobalt/sapphire phase with restrained gold trim |
-| 6 | Hero | 91-94 | ruby/crimson high-sheen material |
-| 7 | Icon | 95-99 | black pearl or ivory/gold/pearl with strongest premium glow |
+| 1 | Squad Player | 55-67 | gold/brass |
+| 2 | Starter | 68-74 | emerald |
+| 3 | Key Player | 75-80 | amethyst |
+| 4 | Star | 81-86 | sapphire |
+| 5 | World Class | 87-90 | ruby |
+| 6 | Hero | 91-94 | diamond |
+| 7 | Icon | 95-99 | pink diamond |
 
 Tier is derived from rating unless manually overridden.
+
+Special editions are driven by `editionKey`; they can override the visible presentation without changing the base tier:
+
+| Edition Key | Label | Presentation |
+| --- | --- | --- |
+| `GOLDEN_BOOT` | Golden Boot | obsidian gold |
+| `GOLDEN_BALL` | Golden Ball | solar gold |
+| `BEST_YOUNG_PLAYER` | Best Young Player | rainbow prism |
+| `GOLDEN_GLOVE` | Golden Glove | black hole |
 
 ## Costs
 

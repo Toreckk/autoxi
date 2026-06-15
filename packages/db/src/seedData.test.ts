@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CARD_EDITION_CONFIG,
   GOALKEEPER_STAT_KEYS,
   OUTFIELD_STAT_KEYS,
+  effectiveMaterialForCard,
+  materialForTier,
   statProfileForPosition,
   type StatKey
 } from "@autoxi/domain";
@@ -41,6 +44,22 @@ describe("curated seed cards", () => {
           expect(card.stats[key]).toBeLessThanOrEqual(99);
         }
       }
+    }
+  });
+
+  it("stores base tier materials while edition keys drive public special-edition visuals", () => {
+    const specialCards = seedCards.filter((card) => card.editionKey !== "NONE");
+
+    expect(specialCards).toHaveLength(4);
+
+    for (const card of specialCards) {
+      const editionConfig = CARD_EDITION_CONFIG[card.editionKey];
+
+      expect(card.materialKey).toBe(materialForTier(card.tier));
+      expect(editionConfig.materialKeyOverride).not.toBeNull();
+      expect(effectiveMaterialForCard(card.tier, card.editionKey)).toBe(
+        editionConfig.materialKeyOverride
+      );
     }
   });
 });

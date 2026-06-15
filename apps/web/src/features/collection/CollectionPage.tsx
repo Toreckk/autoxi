@@ -280,7 +280,7 @@ export function CollectionPage() {
             <PlayerCardFull
               key={card.id}
               card={card}
-              animationMode="hover"
+              animationMode="subtle"
               selected={selectedCard?.id === card.id}
               onClick={() => openCard(card)}
             />

@@ -74,6 +74,13 @@ export const GOALKEEPER_STAT_KEYS = [
 ] as const;
 
 export const MATERIAL_KEYS = [
+  "brass",
+  "emerald",
+  "amethyst",
+  "sapphire",
+  "ruby",
+  "diamond",
+  "pink-diamond",
   "matte-graphite",
   "brushed-steel",
   "emerald-composite",
@@ -81,7 +88,34 @@ export const MATERIAL_KEYS = [
   "cobalt-gold",
   "ruby-hero",
   "black-pearl-icon",
-  "ivory-gold-icon"
+  "ivory-gold-icon",
+  "black-hole",
+  "obsidian-gold",
+  "solar-gold",
+  "supernova",
+  "dark-matter",
+  "rainbow-prism"
+] as const;
+
+export const CARD_EDITION_KEYS = [
+  "NONE",
+  "GOLDEN_BOOT",
+  "GOLDEN_BALL",
+  "BEST_YOUNG_PLAYER",
+  "GOLDEN_GLOVE"
+] as const;
+
+export const ANIMATION_PRESETS = [
+  "none",
+  "subtle-glow",
+  "subtle-wave",
+  "shimmer",
+  "glow-pulse",
+  "premium-glow",
+  "radiant-burst",
+  "nebula-drift",
+  "iridescent-shift",
+  "energy-vortex"
 ] as const;
 
 export const SORT_OPTIONS = [
@@ -105,6 +139,8 @@ export type OutfieldStatKey = (typeof OUTFIELD_STAT_KEYS)[number];
 export type GoalkeeperStatKey = (typeof GOALKEEPER_STAT_KEYS)[number];
 export type StatKey = (typeof STAT_KEYS)[number];
 export type MaterialKey = (typeof MATERIAL_KEYS)[number];
+export type CardEditionKey = (typeof CARD_EDITION_KEYS)[number];
+export type AnimationPreset = (typeof ANIMATION_PRESETS)[number];
 export type SortOption = (typeof SORT_OPTIONS)[number];
 export type AnimationLevel = "none" | "subtle" | "medium" | "premium";
 
@@ -115,9 +151,60 @@ export type CardTierConfig = {
   ratingMax: number;
   cost: number;
   materialKey: MaterialKey;
+  animationPreset: AnimationPreset;
   animationLevel: AnimationLevel;
   rank: number;
 };
+
+export type CardEditionConfig = {
+  key: CardEditionKey;
+  label: string | null;
+  materialKeyOverride: MaterialKey | null;
+  animationPresetOverride: AnimationPreset | null;
+};
+
+export const CARD_TIER_MATERIAL_SET_EXPERIMENTAL = {
+  SQUAD_PLAYER: "brass",
+  STARTER: "emerald",
+  KEY_PLAYER: "amethyst",
+  STAR: "sapphire",
+  WORLD_CLASS: "ruby",
+  HERO: "diamond",
+  ICON: "pink-diamond"
+} as const satisfies Record<CardTier, MaterialKey>;
+
+export const CARD_EDITION_CONFIG = {
+  NONE: {
+    key: "NONE",
+    label: null,
+    materialKeyOverride: null,
+    animationPresetOverride: null
+  },
+  GOLDEN_BOOT: {
+    key: "GOLDEN_BOOT",
+    label: "Golden Boot",
+    materialKeyOverride: "obsidian-gold",
+    animationPresetOverride: "premium-glow"
+  },
+  GOLDEN_BALL: {
+    key: "GOLDEN_BALL",
+    label: "Golden Ball",
+    materialKeyOverride: "solar-gold",
+    animationPresetOverride: "glow-pulse"
+  },
+  BEST_YOUNG_PLAYER: {
+    key: "BEST_YOUNG_PLAYER",
+    label: "Best Young Player",
+    materialKeyOverride: "rainbow-prism",
+    animationPresetOverride: "iridescent-shift"
+  },
+  GOLDEN_GLOVE: {
+    key: "GOLDEN_GLOVE",
+    label: "Golden Glove",
+    materialKeyOverride: "black-hole",
+    animationPresetOverride: "energy-vortex"
+  }
+} as const satisfies Record<CardEditionKey, CardEditionConfig>;
 
 export const CARD_TIER_CONFIG_BY_CODE = {
   SQUAD_PLAYER: {
@@ -126,7 +213,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 55,
     ratingMax: 67,
     cost: 1,
-    materialKey: "matte-graphite",
+    materialKey: "brass",
+    animationPreset: "none",
     animationLevel: "none",
     rank: 1
   },
@@ -136,8 +224,9 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 68,
     ratingMax: 74,
     cost: 2,
-    materialKey: "brushed-steel",
-    animationLevel: "subtle",
+    materialKey: "emerald",
+    animationPreset: "subtle-glow",
+    animationLevel: "none",
     rank: 2
   },
   KEY_PLAYER: {
@@ -146,7 +235,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 75,
     ratingMax: 80,
     cost: 3,
-    materialKey: "emerald-composite",
+    materialKey: "amethyst",
+    animationPreset: "subtle-wave",
     animationLevel: "subtle",
     rank: 3
   },
@@ -156,7 +246,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 81,
     ratingMax: 86,
     cost: 5,
-    materialKey: "violet-phase",
+    materialKey: "sapphire",
+    animationPreset: "shimmer",
     animationLevel: "medium",
     rank: 4
   },
@@ -166,7 +257,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 87,
     ratingMax: 90,
     cost: 7,
-    materialKey: "cobalt-gold",
+    materialKey: "ruby",
+    animationPreset: "glow-pulse",
     animationLevel: "medium",
     rank: 5
   },
@@ -176,7 +268,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 91,
     ratingMax: 94,
     cost: 10,
-    materialKey: "ruby-hero",
+    materialKey: "diamond",
+    animationPreset: "premium-glow",
     animationLevel: "premium",
     rank: 6
   },
@@ -186,7 +279,8 @@ export const CARD_TIER_CONFIG_BY_CODE = {
     ratingMin: 95,
     ratingMax: 99,
     cost: 13,
-    materialKey: "black-pearl-icon",
+    materialKey: "pink-diamond",
+    animationPreset: "premium-glow",
     animationLevel: "premium",
     rank: 7
   }
@@ -268,7 +362,10 @@ export const publicPlayerCardSchema = z.object({
   }),
   role: z.enum(CARD_ROLES),
   stats: cardStatsSchema,
+  editionKey: z.enum(CARD_EDITION_KEYS),
+  editionLabel: z.string().nullable().optional(),
   materialKey: z.enum(MATERIAL_KEYS),
+  animationPreset: z.enum(ANIMATION_PRESETS),
   animationLevel: z.enum(["none", "subtle", "medium", "premium"])
 });
 
@@ -346,6 +443,22 @@ export function deriveTier(rating: number): CardTier {
 
 export function materialForTier(tier: CardTier): MaterialKey {
   return CARD_TIER_CONFIG_BY_CODE[tier].materialKey;
+}
+
+export function animationPresetForTier(tier: CardTier): AnimationPreset {
+  return CARD_TIER_CONFIG_BY_CODE[tier].animationPreset;
+}
+
+export function editionLabelForKey(editionKey: CardEditionKey): string | null {
+  return CARD_EDITION_CONFIG[editionKey].label;
+}
+
+export function effectiveMaterialForCard(tier: CardTier, editionKey: CardEditionKey): MaterialKey {
+  return CARD_EDITION_CONFIG[editionKey].materialKeyOverride ?? materialForTier(tier);
+}
+
+export function effectiveAnimationPresetForCard(tier: CardTier, editionKey: CardEditionKey): AnimationPreset {
+  return CARD_EDITION_CONFIG[editionKey].animationPresetOverride ?? animationPresetForTier(tier);
 }
 
 export function animationLevelForTier(tier: CardTier): AnimationLevel {

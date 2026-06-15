@@ -32,7 +32,10 @@ describe("API public safety", () => {
       statProfile: "OUTFIELD",
       role: "Tempo Setter",
       cost: 10,
-      materialKey: "ruby-hero",
+      editionKey: "NONE",
+      editionLabel: null,
+      materialKey: "diamond",
+      animationPreset: "premium-glow",
       animationLevel: "premium",
       nation: {
         id: "00000000-0000-4000-8000-000000000102",

@@ -30,10 +30,14 @@ Import World Cup player/squad/tournament data into the card catalog schema, gene
 - Assign visible position and broad line.
 - Generate hidden stats using the correct stat profile: outfield cards get pace/shooting/passing/dribbling/defending/physical, while GK cards get diving/handling/kicking/reflexes/speed/positioning.
 - Assign tier from rating using domain tier config.
-- Assign cost, material, and animation from tier config.
+- Assign cost from tier config.
+- Persist base tier material on cards; use `editionKey` to derive special-edition presentation in the public API.
+- Import tournament team results into `world_cup_edition_team_results` when the source data supports final rank/result metadata.
+- Import normalized award metadata into `world_cup_awards` and edition winners into `world_cup_award_winners`.
 - Generate import reports for missing data or uncertain mappings.
 - Require manual alias approval for high-tier cards.
 - Manually curate Star, World Class, Hero, and Icon cards.
+- Manually curate special-edition cards for Golden Boot, Golden Ball, Best Young Player, and Golden Glove when an award winner should receive a collectible card treatment.
 - Keep source/import identifiers out of public DTOs; public aliases should use the SAFE/EVOCATIVE/RISKY/BLOCKED review states internally.
 
 ## Out Of Scope

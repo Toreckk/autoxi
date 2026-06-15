@@ -5,6 +5,7 @@ import {
   deriveTier,
   materialForTier,
   statProfileForPosition,
+  type CardEditionKey,
   type CardRole,
   type PlayerCardStatsDto,
   type VisiblePosition
@@ -29,11 +30,13 @@ export const seedNations = [
   ["fra", "FR", "FRA", "France"],
   ["ger", "DE", "GER", "Germany"],
   ["gha", "GH", "GHA", "Ghana"],
+  ["ita", "IT", "ITA", "Italy"],
   ["jpn", "JP", "JPN", "Japan"],
   ["kor", "KR", "KOR", "Korea Republic"],
   ["mar", "MA", "MAR", "Morocco"],
   ["mex", "MX", "MEX", "Mexico"],
   ["ned", "NL", "NED", "Netherlands"],
+  ["nor", "NO", "NOR", "Norway"],
   ["por", "PT", "POR", "Portugal"],
   ["sen", "SN", "SEN", "Senegal"],
   ["spa", "ES", "ESP", "Spain"],
@@ -43,6 +46,7 @@ export const seedNations = [
 
 export const seedEditions = [
   [1986, "Mexico", "MEX"],
+  [1990, "Italy", "ITA"],
   [1994, "United States", "USA"],
   [1998, "France", "FRA"],
   [2002, "Korea/Japan", "KOR"],
@@ -61,6 +65,7 @@ type SeedCardInput = {
   rating: number;
   position: VisiblePosition;
   role: CardRole;
+  editionKey?: CardEditionKey;
   stats: PlayerCardStatsDto;
 };
 
@@ -106,8 +111,26 @@ const cards: SeedCardInput[] = [
   { displayName: "Adrian Bexley", shortName: "Bexley", nation: "eng", year: 2010, rating: 70, position: "ST", role: "Finisher", stats: { profile: "OUTFIELD", pace: 74, shooting: 75, passing: 61, dribbling: 68, defending: 36, physical: 76 } },
   { displayName: "Iker Moreno", shortName: "Moreno", nation: "spa", year: 1994, rating: 69, position: "GK", role: "Shot Stopper", stats: { profile: "GOALKEEPER", diving: 76, handling: 73, kicking: 56, reflexes: 78, speed: 46, positioning: 79 } },
   { displayName: "Riku Tanabe", shortName: "Tanabe", nation: "jpn", year: 1998, rating: 68, position: "CM", role: "Tempo Setter", stats: { profile: "OUTFIELD", pace: 70, shooting: 62, passing: 72, dribbling: 70, defending: 62, physical: 64 } },
-  { displayName: "Milo Hart", shortName: "Hart", nation: "usa", year: 1994, rating: 62, position: "ST", role: "Finisher", stats: { profile: "OUTFIELD", pace: 64, shooting: 63, passing: 51, dribbling: 58, defending: 30, physical: 66 } }
+  { displayName: "Milo Hart", shortName: "Hart", nation: "usa", year: 1994, rating: 62, position: "ST", role: "Finisher", stats: { profile: "OUTFIELD", pace: 64, shooting: 63, passing: 51, dribbling: 58, defending: 30, physical: 66 } },
+  { displayName: "Timo Van Daal", shortName: "T. Van Daal", nation: "ned", year: 2014, rating: 61, position: "CM", role: "Tempo Setter", stats: { profile: "OUTFIELD", pace: 60, shooting: 57, passing: 66, dribbling: 62, defending: 58, physical: 64 } },
+  { displayName: "Rafa Linho", shortName: "Linho", nation: "bra", year: 2022, rating: 71, position: "RW", role: "Wide Threat", stats: { profile: "OUTFIELD", pace: 79, shooting: 70, passing: 68, dribbling: 77, defending: 42, physical: 61 } },
+  { displayName: "Wes Salin", shortName: "Salin", nation: "fra", year: 2018, rating: 78, position: "CB", role: "Anchor", stats: { profile: "OUTFIELD", pace: 72, shooting: 45, passing: 66, dribbling: 64, defending: 80, physical: 81 } },
+  { displayName: "Jules Alvar", shortName: "Alvar", nation: "arg", year: 2010, rating: 83, position: "ST", role: "Finisher", stats: { profile: "OUTFIELD", pace: 84, shooting: 85, passing: 73, dribbling: 82, defending: 38, physical: 77 } },
+  { displayName: "Bruno Feran", shortName: "Feran", nation: "por", year: 1986, rating: 88, position: "CAM", role: "Creator", stats: { profile: "OUTFIELD", pace: 77, shooting: 86, passing: 90, dribbling: 87, defending: 61, physical: 75 } },
+  { displayName: "Marek Neuer", shortName: "Neuer", nation: "ger", year: 1990, rating: 92, position: "GK", role: "Shot Stopper", stats: { profile: "GOALKEEPER", diving: 94, handling: 90, kicking: 82, reflexes: 95, speed: 58, positioning: 93 } },
+  { displayName: "Elias Haland", shortName: "Haland", nation: "nor", year: 1998, rating: 97, position: "ST", role: "Finisher", stats: { profile: "OUTFIELD", pace: 91, shooting: 97, passing: 80, dribbling: 88, defending: 43, physical: 96 } },
+  { displayName: "Nico Serrat", shortName: "Serrat", nation: "fra", year: 2022, rating: 97, position: "LW", role: "Finisher", editionKey: "GOLDEN_BOOT", stats: { profile: "OUTFIELD", pace: 96, shooting: 97, passing: 86, dribbling: 94, defending: 39, physical: 83 } },
+  { displayName: "Leo Aranda", shortName: "Aranda", nation: "arg", year: 2022, rating: 98, position: "CAM", role: "Creator", editionKey: "GOLDEN_BALL", stats: { profile: "OUTFIELD", pace: 87, shooting: 95, passing: 98, dribbling: 99, defending: 48, physical: 78 } },
+  { displayName: "Jude Bellan", shortName: "Bellan", nation: "eng", year: 2022, rating: 91, position: "CM", role: "Ball Winner", editionKey: "BEST_YOUNG_PLAYER", stats: { profile: "OUTFIELD", pace: 84, shooting: 83, passing: 91, dribbling: 90, defending: 86, physical: 88 } },
+  { displayName: "Emilio Duarte", shortName: "Duarte", nation: "arg", year: 2022, rating: 94, position: "GK", role: "Shot Stopper", editionKey: "GOLDEN_GLOVE", stats: { profile: "GOALKEEPER", diving: 95, handling: 91, kicking: 84, reflexes: 96, speed: 56, positioning: 93 } }
 ];
+
+export const seedWorldCupAwards = [
+  ["GOLDEN_BOOT", "Golden Boot", "Top scorer award."],
+  ["GOLDEN_BALL", "Golden Ball", "Best player award."],
+  ["BEST_YOUNG_PLAYER", "Best Young Player", "Best young player award."],
+  ["GOLDEN_GLOVE", "Golden Glove", "Best goalkeeper award."]
+] as const;
 
 export const seedCards = cards.map((card, index) => {
   const tier = deriveTier(card.rating);
@@ -115,14 +138,18 @@ export const seedCards = cards.map((card, index) => {
   if (card.stats.profile !== statProfile) {
     throw new Error(`Seed card ${card.displayName} uses ${card.stats.profile} stats for ${card.position}`);
   }
+  const editionKey = card.editionKey ?? "NONE";
 
   return {
     ...card,
+    editionKey,
     ordinal: index + 1,
     identityKey: `curated-${card.shortName.toLowerCase().replaceAll(" ", "-")}-${card.year}`,
     broadLine: broadLineForPosition(card.position),
     statProfile,
     tier,
+    baseMaterialKey: materialForTier(tier),
+    // Persist the base tier material; special edition visuals are derived from editionKey in the public API.
     materialKey: materialForTier(tier),
     cost: costForTier(tier)
   };

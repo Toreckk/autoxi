@@ -7,6 +7,7 @@ Keep tests focused and proportional to the first slice.
 Test pure helpers:
 
 - tier derivation from rating,
+- tier material and special-edition presentation derivation,
 - stat validation,
 - position to broad-line mapping,
 - filter normalization,
@@ -20,6 +21,7 @@ Test:
 - card filter parsing,
 - repository query behavior with seeded test data,
 - public DTO mapping excludes raw names,
+- public DTO mapping resolves special-edition `materialKey`, `editionLabel`, and `animationPreset` from `editionKey`,
 - card detail 404 behavior.
 
 Public card API safety tests must assert `GET /cards` and `GET /cards/:id` never include:
@@ -41,6 +43,7 @@ Test:
 
 - Collection renders cards from mock API data,
 - filters update query state,
+- material and special-edition card states render with stable labels and local flag assets,
 - empty state appears,
 - error state appears,
 - card detail opens.

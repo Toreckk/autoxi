@@ -15,12 +15,14 @@ import {
 import { sql } from "drizzle-orm";
 import {
   BROAD_LINES,
+  CARD_EDITION_KEYS,
   CARD_ROLES,
   CARD_TIERS,
   MATERIAL_KEYS,
   STAT_PROFILES,
   VISIBLE_POSITIONS,
   type BroadLine,
+  type CardEditionKey,
   type CardRole,
   type CardTier,
   type MaterialKey,
@@ -34,6 +36,7 @@ export const broadLineEnum = pgEnum("broad_line", BROAD_LINES);
 export const cardRoleEnum = pgEnum("card_role", CARD_ROLES);
 export const materialKeyEnum = pgEnum("material_key", MATERIAL_KEYS);
 export const statProfileEnum = pgEnum("stat_profile", STAT_PROFILES);
+export const cardEditionKeyEnum = pgEnum("card_edition_key", CARD_EDITION_KEYS);
 export const aliasRiskLevelEnum = pgEnum("alias_risk_level", ["SAFE", "EVOCATIVE", "RISKY", "BLOCKED"]);
 
 const timestamps = {
@@ -175,6 +178,7 @@ export const playerCards = pgTable(
     broadLine: broadLineEnum("broad_line").notNull().$type<BroadLine>(),
     statProfile: statProfileEnum("stat_profile").notNull().$type<StatProfile>(),
     role: cardRoleEnum("role").notNull().$type<CardRole>(),
+    editionKey: cardEditionKeyEnum("edition_key").default("NONE").notNull().$type<CardEditionKey>(),
     cost: integer("cost").notNull(),
     materialKey: materialKeyEnum("material_key").notNull().$type<MaterialKey>(),
     ...timestamps
@@ -182,6 +186,7 @@ export const playerCards = pgTable(
   (table) => ({
     ratingIdx: index("player_cards_rating_idx").on(table.rating),
     tierIdx: index("player_cards_tier_idx").on(table.tier),
+    editionKeyIdx: index("player_cards_edition_key_idx").on(table.editionKey),
     positionIdx: index("player_cards_position_idx").on(table.position),
     broadLineIdx: index("player_cards_broad_line_idx").on(table.broadLine),
     nationIdx: index("player_cards_nation_idx").on(table.nationId),
@@ -192,6 +197,74 @@ export const playerCards = pgTable(
     ),
     ratingCheck: check("player_cards_rating_check", sql`${table.rating} between 55 and 99`),
     costCheck: check("player_cards_cost_check", sql`${table.cost} >= 0`)
+  })
+);
+
+export const worldCupEditionTeamResults = pgTable(
+  "world_cup_edition_team_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    worldCupEditionId: uuid("world_cup_edition_id")
+      .notNull()
+      .references(() => worldCupEditions.id, { onDelete: "cascade" }),
+    nationId: uuid("nation_id")
+      .notNull()
+      .references(() => nations.id, { onDelete: "restrict" }),
+    finalRank: integer("final_rank"),
+    resultCode: text("result_code").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    editionResultIdx: index("world_cup_edition_team_results_edition_result_idx").on(
+      table.worldCupEditionId,
+      table.resultCode
+    ),
+    editionNationResultUnique: unique("world_cup_edition_team_results_edition_nation_result_unique").on(
+      table.worldCupEditionId,
+      table.nationId,
+      table.resultCode
+    )
+  })
+);
+
+export const worldCupAwards = pgTable(
+  "world_cup_awards",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: text("code").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    codeUnique: unique("world_cup_awards_code_unique").on(table.code)
+  })
+);
+
+export const worldCupAwardWinners = pgTable(
+  "world_cup_award_winners",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    worldCupEditionId: uuid("world_cup_edition_id")
+      .notNull()
+      .references(() => worldCupEditions.id, { onDelete: "cascade" }),
+    awardId: uuid("award_id")
+      .notNull()
+      .references(() => worldCupAwards.id, { onDelete: "restrict" }),
+    playerIdentityId: uuid("player_identity_id").references(() => playerIdentities.id, { onDelete: "set null" }),
+    playerCardId: uuid("player_card_id").references(() => playerCards.id, { onDelete: "set null" }),
+    nationId: uuid("nation_id").references(() => nations.id, { onDelete: "set null" }),
+    sourcePlayerId: uuid("source_player_id").references(() => sourcePlayers.id, { onDelete: "set null" }),
+    rawWinnerName: text("raw_winner_name"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    editionAwardIdx: index("world_cup_award_winners_edition_award_idx").on(table.worldCupEditionId, table.awardId),
+    editionAwardUnique: unique("world_cup_award_winners_edition_award_unique").on(
+      table.worldCupEditionId,
+      table.awardId
+    )
   })
 );
 

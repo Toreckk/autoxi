@@ -292,9 +292,11 @@ p {
 
 .player-card {
   position: relative;
+  isolation: isolate;
   display: block;
   width: min(100%, 240px);
   aspect-ratio: 4 / 5;
+  overflow: visible;
   padding: 0;
   border: 0;
   background: transparent;
@@ -302,26 +304,74 @@ p {
   perspective: 1000px;
 }
 
+.player-card__outer-effect {
+  position: absolute;
+  inset: -10px;
+  z-index: 0;
+  display: none;
+  opacity: 0;
+  border-radius: 18px;
+  background: var(--card-outer-effect, transparent);
+  filter: blur(var(--card-outer-blur, 12px));
+  pointer-events: none;
+}
+
+.player-card__outer-effect::before,
+.player-card__outer-effect::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+}
+
 .player-card__inner {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   height: 100%;
   overflow: hidden;
-  padding: 16px;
+  padding: 17px;
   border: 2px solid var(--card-border-glow);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--card-bg);
   box-shadow:
-    inset 0 0 20px var(--card-inner-glow),
-    0 10px 30px -5px rgba(0, 0, 0, 0.7),
-    0 0 var(--card-glow-size, 16px) color-mix(in srgb, var(--card-border-glow), transparent var(--card-glow-fade, 60%));
+    inset 0 0 0 1px color-mix(in srgb, var(--card-border-glow), white 30%),
+    inset 0 0 18px var(--card-inner-glow),
+    0 12px 26px -12px rgba(0, 0, 0, 0.82),
+    0 0 var(--card-glow-size, 14px) color-mix(in srgb, var(--card-border-glow), transparent var(--card-glow-fade, 72%));
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
   transform-style: preserve-3d;
   transition:
     transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 400ms ease,
     filter 400ms ease;
+}
+
+.player-card__inner::before,
+.player-card__inner::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-card__inner::before {
+  background:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.045) 28%, transparent 29%),
+    linear-gradient(302deg, transparent 0 64%, rgba(0, 0, 0, 0.14) 65% 100%),
+    var(--card-facet-layer, transparent);
+  mix-blend-mode: var(--facet-blend, overlay);
+}
+
+.player-card__inner::after {
+  background: var(--card-spark-layer, transparent);
+  mix-blend-mode: var(--spark-blend, screen);
 }
 
 .player-card[data-animation="hover"]:hover .player-card__inner,
@@ -347,14 +397,25 @@ p {
 
 .player-card__flow {
   position: absolute;
-  inset: -72%;
+  inset: -78%;
   opacity: 0;
   z-index: 1;
-  background: linear-gradient(135deg, transparent 34%, var(--card-flow-color) 46%, var(--card-flow-color) 54%, transparent 66%);
+  background: linear-gradient(135deg, transparent 38%, var(--card-flow-color) 48%, var(--card-flow-color) 52%, transparent 62%);
   mix-blend-mode: var(--flow-blend, screen);
   animation: none;
   animation-delay: var(--flow-delay, 0s);
   pointer-events: none;
+}
+
+.player-card__sheen {
+  position: absolute;
+  inset: -40%;
+  z-index: 1;
+  opacity: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.2) 50%, transparent 62%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transform: translateX(-70%);
 }
 
 .player-card__grain {
@@ -366,6 +427,25 @@ p {
   background-size: var(--card-texture-size, auto);
   mix-blend-mode: var(--texture-blend, overlay);
   pointer-events: none;
+}
+
+.player-card__edition {
+  position: relative;
+  z-index: 2;
+  justify-self: center;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--card-border-glow), transparent 36%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--card-plate-bg), transparent 20%);
+  color: var(--card-accent, var(--card-role-color, #f2c97d));
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.75);
 }
 
 .player-card__top,
@@ -423,7 +503,8 @@ p {
   z-index: 2;
   align-self: stretch;
   display: grid;
-  gap: 8px;
+  justify-items: center;
+  gap: 7px;
   margin-bottom: 14px;
   text-align: center;
   text-shadow: var(--card-name-shadow, 0 3px 5px rgba(0, 0, 0, 0.78));
@@ -480,10 +561,10 @@ p {
   min-height: 32px;
   padding: 7px 11px;
   border: 1px solid color-mix(in srgb, var(--card-border-glow), transparent 36%);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--card-plate-bg), transparent 12%);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--card-plate-bg), transparent 18%);
   box-shadow:
-    inset 0 0 13px rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
     0 0 10px color-mix(in srgb, var(--card-border-glow), transparent 70%);
   color: var(--card-plate-color, var(--card-text-primary, #f6f3e8));
   font-size: 0.72rem;
@@ -513,6 +594,164 @@ p {
 
 .player-card--mini .rating-block strong {
   font-size: 1.25rem;
+}
+
+.material-brass {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.08) 0 28%, transparent 29%),
+    linear-gradient(145deg, #c38418 0%, #8a5b14 58%, #463010 100%);
+  --card-border-glow: #d99a20;
+  --card-flow-color: rgba(255, 191, 50, 0.12);
+  --card-inner-glow: rgba(217, 154, 32, 0.1);
+  --card-plate-bg: #4a310c;
+  --card-plate-color: #fff0bd;
+  --card-role-color: #fff0bd;
+  --card-accent: #ffbf32;
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.16) 59% 100%);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.06), transparent 34%, rgba(0, 0, 0, 0.1) 76%);
+  --grain-opacity: 0.18;
+  --card-glow-size: 8px;
+  --card-glow-fade: 88%;
+}
+
+.material-emerald {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.08) 0 28%, transparent 29%),
+    linear-gradient(145deg, #08a95d 0%, #006d3a 58%, #00341f 100%);
+  --card-border-glow: #00c768;
+  --card-flow-color: rgba(0, 221, 116, 0.14);
+  --card-inner-glow: rgba(0, 199, 104, 0.1);
+  --card-plate-bg: #042918;
+  --card-plate-color: #d7ffe6;
+  --card-role-color: #d7ffe6;
+  --card-accent: #00dd74;
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.16) 59% 100%);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.05), transparent 34%, rgba(0, 0, 0, 0.08) 76%);
+  --grain-opacity: 0.16;
+  --card-glow-size: 11px;
+  --card-glow-fade: 82%;
+}
+
+.material-amethyst {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.08) 0 28%, transparent 29%),
+    linear-gradient(145deg, #6d34b7 0%, #341f68 60%, #170d2f 100%);
+  --card-border-glow: #a45cff;
+  --card-flow-color: rgba(187, 108, 255, 0.16);
+  --card-inner-glow: rgba(164, 92, 255, 0.12);
+  --card-plate-bg: #20113e;
+  --card-plate-color: #f0d6ff;
+  --card-role-color: #efe1ff;
+  --card-accent: #bb6cff;
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.15) 59% 100%);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.05), transparent 34%, rgba(0, 0, 0, 0.08) 76%);
+  --grain-opacity: 0.18;
+  --card-glow-size: 12px;
+  --card-glow-fade: 80%;
+}
+
+.material-sapphire {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.08) 0 28%, transparent 29%),
+    linear-gradient(145deg, #0073c9 0%, #004a86 58%, #062546 100%);
+  --card-border-glow: #00a3ff;
+  --card-flow-color: rgba(0, 163, 255, 0.17);
+  --card-inner-glow: rgba(0, 163, 255, 0.12);
+  --card-plate-bg: #061f3c;
+  --card-plate-color: #dff7ff;
+  --card-role-color: #7dd3fc;
+  --card-accent: #00a3ff;
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.15) 59% 100%);
+  --card-spark-layer: linear-gradient(128deg, transparent 0 47%, rgba(255, 255, 255, 0.1) 48% 49%, transparent 50%);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.06), transparent 34%, rgba(0, 0, 0, 0.08) 76%);
+  --grain-opacity: 0.16;
+  --flow-duration: 8.5s;
+  --flow-active-opacity: 0.4;
+  --card-glow-size: 13px;
+  --card-glow-fade: 78%;
+}
+
+.material-ruby {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.08) 0 28%, transparent 29%),
+    linear-gradient(145deg, #b31616 0%, #7b1111 58%, #290606 100%);
+  --card-border-glow: #ff3b30;
+  --card-flow-color: rgba(255, 69, 58, 0.18);
+  --card-inner-glow: rgba(255, 69, 58, 0.12);
+  --card-plate-bg: #2d0808;
+  --card-plate-color: #ffe0dc;
+  --card-role-color: #ff9b94;
+  --card-accent: #ff3b30;
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.16) 59% 100%);
+  --card-spark-layer: linear-gradient(132deg, transparent 0 48%, rgba(255, 255, 255, 0.1) 49% 50%, transparent 51%);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.05), transparent 34%, rgba(0, 0, 0, 0.1) 76%);
+  --grain-opacity: 0.16;
+  --flow-duration: 8.5s;
+  --flow-active-opacity: 0.42;
+  --card-glow-size: 14px;
+  --card-glow-fade: 76%;
+}
+
+.material-diamond {
+  --card-bg:
+    radial-gradient(circle at 72% 18%, rgba(255, 255, 255, 0.72), transparent 14%),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.24) 0 28%, transparent 29%),
+    linear-gradient(145deg, #dff5ff 0%, #9fcfe6 58%, #6f9fb7 100%);
+  --card-border-glow: #bfeaff;
+  --card-flow-color: rgba(255, 255, 255, 0.46);
+  --card-inner-glow: rgba(191, 234, 255, 0.28);
+  --card-plate-bg: #8fbfd6;
+  --card-plate-color: #07111c;
+  --card-role-color: #163149;
+  --card-text-primary: #07111c;
+  --card-text-secondary: #11283e;
+  --card-rating-color: #07111c;
+  --card-position-color: #11283e;
+  --card-accent: #1d5d83;
+  --facet-blend: multiply;
+  --card-facet-layer:
+    linear-gradient(32deg, transparent 0 24%, rgba(40, 86, 116, 0.14) 25% 26%, transparent 27%),
+    linear-gradient(126deg, transparent 0 54%, rgba(40, 86, 116, 0.16) 55% 57%, transparent 58%),
+    linear-gradient(302deg, transparent 0 58%, rgba(20, 50, 78, 0.16) 59% 100%);
+  --card-spark-layer:
+    linear-gradient(38deg, transparent 0 40%, rgba(255, 255, 255, 0.42) 41% 42%, transparent 43%),
+    radial-gradient(circle at 78% 22%, rgba(255, 255, 255, 0.82) 0 1px, transparent 3px);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.16), transparent 34%, rgba(20, 50, 78, 0.08) 76%);
+  --texture-blend: overlay;
+  --grain-opacity: 0.28;
+  --flow-duration: 8s;
+  --flow-active-opacity: 0.54;
+  --card-glow-size: 22px;
+  --card-glow-fade: 58%;
+}
+
+.material-pink-diamond {
+  --card-bg:
+    radial-gradient(circle at 72% 18%, rgba(255, 255, 255, 0.38), transparent 15%),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.14) 0 28%, transparent 29%),
+    linear-gradient(145deg, #ff5bad 0%, #c91f72 58%, #65103b 100%);
+  --card-border-glow: #ff5bad;
+  --card-flow-color: rgba(255, 255, 255, 0.4);
+  --card-inner-glow: rgba(255, 91, 173, 0.24);
+  --card-plate-bg: #65103b;
+  --card-plate-color: #fff1f8;
+  --card-role-color: #ffc0de;
+  --card-accent: #ff5bad;
+  --facet-blend: multiply;
+  --card-facet-layer:
+    linear-gradient(32deg, transparent 0 24%, rgba(93, 14, 79, 0.14) 25% 26%, transparent 27%),
+    linear-gradient(126deg, transparent 0 54%, rgba(93, 14, 79, 0.16) 55% 57%, transparent 58%),
+    linear-gradient(302deg, transparent 0 58%, rgba(93, 14, 79, 0.18) 59% 100%);
+  --card-spark-layer:
+    linear-gradient(40deg, transparent 0 41%, rgba(255, 255, 255, 0.34) 42% 43%, transparent 44%),
+    radial-gradient(circle at 78% 22%, rgba(255, 255, 255, 0.68) 0 1px, transparent 3px);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.08), transparent 34%, rgba(93, 14, 79, 0.08) 76%);
+  --texture-blend: overlay;
+  --grain-opacity: 0.24;
+  --flow-duration: 8s;
+  --flow-active-opacity: 0.54;
+  --card-glow-size: 22px;
+  --card-glow-fade: 58%;
 }
 
 .material-matte-graphite {
@@ -649,6 +888,204 @@ p {
   --card-glow-fade: 36%;
 }
 
+.material-supernova {
+  --card-bg:
+    radial-gradient(circle at 50% 54%, rgba(255, 255, 255, 0.95) 0 2%, rgba(255, 210, 125, 0.72) 4%, rgba(251, 146, 60, 0.32) 12%, transparent 28%),
+    repeating-conic-gradient(from 12deg at 50% 54%, rgba(255, 236, 190, 0.16) 0deg 4deg, transparent 4deg 14deg),
+    radial-gradient(circle at 50% 54%, #c2410c 0%, #5d1b04 42%, #210600 78%);
+  --card-border-glow: #fb923c;
+  --card-flow-color: rgba(255, 237, 213, 0.55);
+  --card-inner-glow: rgba(251, 146, 60, 0.26);
+  --card-outer-effect:
+    radial-gradient(circle at 50% 50%, rgba(255, 244, 214, 0.72), rgba(251, 146, 60, 0.34) 22%, transparent 58%),
+    repeating-conic-gradient(from 0deg, rgba(251, 146, 60, 0.42) 0deg 5deg, transparent 5deg 17deg);
+  --card-outer-blur: 7px;
+  --card-plate-bg: #3b1304;
+  --card-plate-color: #ffedd5;
+  --card-role-color: #fdba74;
+  --card-accent: #fed7aa;
+  --card-facet-layer:
+    repeating-conic-gradient(from 0deg at 50% 54%, rgba(255, 255, 255, 0.18) 0deg 3deg, transparent 3deg 14deg),
+    radial-gradient(circle at 50% 54%, transparent 0 7%, rgba(255, 174, 71, 0.3) 8% 11%, transparent 20%);
+  --card-spark-layer:
+    radial-gradient(circle at 50% 54%, rgba(255, 255, 255, 0.96) 0 2px, rgba(255, 210, 125, 0.72) 4px, transparent 34px),
+    radial-gradient(circle at 28% 28%, rgba(255, 234, 175, 0.82) 0 1px, transparent 3px),
+    radial-gradient(circle at 72% 72%, rgba(255, 183, 77, 0.62) 0 1px, transparent 3px),
+    radial-gradient(circle at 22% 76%, rgba(255, 255, 255, 0.5) 0 1px, transparent 3px);
+  --card-texture:
+    radial-gradient(circle at 50% 54%, rgba(255, 244, 214, 0.18), transparent 22%),
+    repeating-conic-gradient(from 0deg at 50% 54%, rgba(255, 255, 255, 0.08) 0deg 3deg, transparent 3deg 16deg);
+  --texture-blend: screen;
+  --grain-opacity: 0.45;
+  --flow-duration: 8.5s;
+  --flow-active-opacity: 0.72;
+  --card-glow-size: 38px;
+  --card-glow-fade: 26%;
+}
+
+.material-dark-matter {
+  --card-bg:
+    radial-gradient(ellipse at 50% 92%, rgba(147, 51, 234, 0.64), rgba(30, 64, 175, 0.18) 24%, transparent 42%),
+    radial-gradient(ellipse at 46% 46%, rgba(192, 132, 252, 0.36), transparent 18%),
+    radial-gradient(circle at 62% 36%, rgba(59, 130, 246, 0.18), transparent 16%),
+    radial-gradient(circle at center, #180426 0%, #05040a 74%);
+  --card-border-glow: #c084fc;
+  --card-flow-color: rgba(216, 180, 254, 0.34);
+  --card-inner-glow: rgba(168, 85, 247, 0.18);
+  --card-outer-effect:
+    radial-gradient(ellipse at 52% 48%, rgba(168, 85, 247, 0.38), transparent 58%),
+    conic-gradient(from 0deg, transparent, rgba(147, 51, 234, 0.22), transparent, rgba(59, 130, 246, 0.14), transparent);
+  --card-outer-blur: 8px;
+  --card-plate-bg: #1e0b2e;
+  --card-plate-color: #f3e8ff;
+  --card-role-color: #d8b4fe;
+  --card-accent: #d8b4fe;
+  --card-facet-layer:
+    radial-gradient(ellipse at 50% 95%, transparent 0 24%, rgba(216, 180, 254, 0.46) 25% 27%, transparent 34%),
+    linear-gradient(118deg, transparent 0 36%, rgba(147, 51, 234, 0.2) 37% 39%, transparent 40%),
+    radial-gradient(ellipse at 42% 50%, rgba(168, 85, 247, 0.22), transparent 28%);
+  --card-spark-layer:
+    radial-gradient(circle at 18% 22%, rgba(216, 180, 254, 0.72) 0 1px, transparent 2px),
+    radial-gradient(circle at 36% 16%, rgba(255, 255, 255, 0.56) 0 1px, transparent 2px),
+    radial-gradient(circle at 78% 32%, rgba(147, 197, 253, 0.52) 0 1px, transparent 2px),
+    radial-gradient(circle at 54% 64%, rgba(216, 180, 254, 0.44) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 76%, rgba(255, 255, 255, 0.36) 0 1px, transparent 2px);
+  --card-texture:
+    radial-gradient(circle at 22% 28%, rgba(216, 180, 254, 0.28) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 70%, rgba(255, 255, 255, 0.18) 0 1px, transparent 2px);
+  --card-texture-size: 21px 21px, 34px 34px;
+  --texture-blend: screen;
+  --grain-opacity: 0.44;
+  --flow-duration: 10s;
+  --flow-active-opacity: 0.6;
+  --card-glow-size: 35px;
+  --card-glow-fade: 34%;
+}
+
+.material-rainbow-prism {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.16) 0 28%, transparent 29%),
+    linear-gradient(135deg, #ff4e6a 0%, #ffb000 22%, #38d95b 45%, #00a7ff 68%, #9a4dff 100%);
+  --card-border-glow: #36d7ff;
+  --card-flow-color: rgba(255, 255, 255, 0.42);
+  --card-inner-glow: rgba(54, 215, 255, 0.18);
+  --card-outer-effect:
+    linear-gradient(120deg, rgba(56, 189, 248, 0.34), rgba(250, 204, 21, 0.2), rgba(236, 72, 153, 0.34)),
+    radial-gradient(circle, rgba(255, 255, 255, 0.24), transparent 62%);
+  --card-outer-blur: 9px;
+  --card-plate-bg: #22203c;
+  --card-plate-color: #f8fbff;
+  --card-role-color: #f8fbff;
+  --card-accent: #f8fbff;
+  --card-facet-layer:
+    linear-gradient(32deg, transparent 0 24%, rgba(255, 255, 255, 0.18) 25% 26%, transparent 27%),
+    linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.12) 59% 100%);
+  --card-spark-layer:
+    linear-gradient(115deg, transparent 0 41%, rgba(255, 255, 255, 0.28) 42% 43%, transparent 44%),
+    radial-gradient(circle at 80% 68%, rgba(255, 255, 255, 0.4) 0 1px, transparent 3px);
+  --card-texture: linear-gradient(115deg, rgba(255, 255, 255, 0.12), transparent 28%, rgba(255, 255, 255, 0.08) 68%, transparent);
+  --texture-blend: overlay;
+  --grain-opacity: 0.2;
+  --flow-duration: 8.5s;
+  --flow-active-opacity: 0.54;
+  --card-glow-size: 22px;
+  --card-glow-fade: 58%;
+}
+
+.material-black-hole {
+  --card-bg:
+    radial-gradient(circle at 48% 44%, rgba(126, 66, 217, 0.24), transparent 24%),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.06) 0 28%, transparent 29%),
+    linear-gradient(145deg, #24103d 0%, #120b21 55%, #06050c 100%);
+  --card-border-glow: #7e42d9;
+  --card-flow-color: rgba(179, 92, 255, 0.28);
+  --card-inner-glow: rgba(126, 66, 217, 0.14);
+  --card-outer-effect:
+    radial-gradient(circle at 42% 49%, transparent 15%, rgba(88, 28, 135, 0.55) 24%, transparent 46%),
+    conic-gradient(from 0deg, transparent, rgba(168, 85, 247, 0.34), transparent, rgba(96, 165, 250, 0.2), transparent);
+  --card-outer-blur: 6px;
+  --card-plate-bg: #120b21;
+  --card-plate-color: #e9d5ff;
+  --card-role-color: #c4b5fd;
+  --card-accent: #d8b4fe;
+  --card-facet-layer:
+    linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.22) 59% 100%),
+    radial-gradient(circle at 48% 44%, transparent 0 20%, rgba(126, 66, 217, 0.22) 21% 23%, transparent 34%);
+  --card-spark-layer:
+    radial-gradient(circle at 62% 36%, rgba(216, 180, 254, 0.38) 0 1px, transparent 2px),
+    radial-gradient(circle at 76% 72%, rgba(147, 197, 253, 0.24) 0 1px, transparent 2px);
+  --card-texture: linear-gradient(130deg, rgba(255, 255, 255, 0.05), transparent 34%, rgba(126, 66, 217, 0.08) 76%);
+  --texture-blend: screen;
+  --grain-opacity: 0.28;
+  --flow-duration: 10s;
+  --flow-active-opacity: 0.42;
+  --card-glow-size: 22px;
+  --card-glow-fade: 58%;
+}
+
+.material-obsidian-gold {
+  --card-bg:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.06) 0 28%, transparent 29%),
+    linear-gradient(302deg, transparent 0 58%, rgba(215, 154, 34, 0.09) 59% 100%),
+    linear-gradient(145deg, #242424 0%, #101010 58%, #030303 100%);
+  --card-border-glow: #d79a22;
+  --card-flow-color: rgba(246, 170, 28, 0.32);
+  --card-inner-glow: rgba(215, 154, 34, 0.18);
+  --card-plate-bg: #17130b;
+  --card-plate-color: #fff0bd;
+  --card-role-color: #f8d57a;
+  --card-accent: #f6aa1c;
+  --card-text-primary: #fff5c8;
+  --card-text-secondary: #ffe7a3;
+  --card-rating-color: #fff5c8;
+  --card-position-color: #ffe7a3;
+  --card-text-shadow: 0 0 12px rgba(246, 224, 94, 0.44), 0 2px 2px rgba(0, 0, 0, 0.82);
+  --card-name-shadow: 0 0 18px rgba(214, 158, 46, 0.64), 0 3px 4px rgba(0, 0, 0, 0.86);
+  --card-facet-layer: linear-gradient(302deg, transparent 0 58%, rgba(215, 154, 34, 0.12) 59% 100%);
+  --card-spark-layer:
+    radial-gradient(circle at 72% 20%, rgba(255, 238, 164, 0.46) 0 1px, transparent 3px);
+  --card-texture: linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent 24%, rgba(214, 158, 46, 0.06) 62%, transparent 82%);
+  --texture-blend: screen;
+  --grain-opacity: 0.22;
+  --flow-duration: 9s;
+  --flow-active-opacity: 0.5;
+  --card-glow-size: 22px;
+  --card-glow-fade: 56%;
+}
+
+.material-solar-gold {
+  --card-bg:
+    radial-gradient(circle at 50% 39%, rgba(255, 230, 130, 0.24), transparent 34%),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.12) 0 28%, transparent 29%),
+    linear-gradient(145deg, #f6a21a 0%, #b76f0e 58%, #5c3608 100%);
+  --card-border-glow: #ff9f12;
+  --card-flow-color: rgba(255, 174, 36, 0.3);
+  --card-inner-glow: rgba(255, 159, 18, 0.18);
+  --card-plate-bg: #5c3608;
+  --card-plate-color: #fff3c4;
+  --card-role-color: #ffe7a3;
+  --card-accent: #fff0bd;
+  --card-text-primary: #fff8d6;
+  --card-text-secondary: #fff0bd;
+  --card-rating-color: #fff8d6;
+  --card-position-color: #fff0bd;
+  --card-text-shadow: 0 0 10px rgba(255, 214, 117, 0.48), 0 2px 2px rgba(0, 0, 0, 0.78);
+  --card-name-shadow: 0 0 14px rgba(255, 193, 7, 0.58), 0 3px 4px rgba(0, 0, 0, 0.82);
+  --card-facet-layer:
+    repeating-conic-gradient(from 0deg at 50% 39%, rgba(255, 244, 214, 0.16) 0deg 1deg, transparent 1deg 18deg),
+    linear-gradient(302deg, transparent 0 58%, rgba(0, 0, 0, 0.12) 59% 100%);
+  --card-spark-layer:
+    radial-gradient(circle at 50% 39%, rgba(255, 255, 255, 0.5) 0 1px, rgba(255, 218, 114, 0.28) 3px, transparent 30px),
+    radial-gradient(circle at 78% 68%, rgba(255, 238, 164, 0.3) 0 1px, transparent 3px);
+  --card-texture: linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 24%, rgba(255, 193, 7, 0.06) 68%, transparent);
+  --texture-blend: screen;
+  --grain-opacity: 0.22;
+  --flow-duration: 8.5s;
+  --flow-active-opacity: 0.48;
+  --card-glow-size: 22px;
+  --card-glow-fade: 56%;
+}
+
 .material-cobalt-gold .player-card__flow,
 .material-ruby-hero .player-card__flow,
 .material-black-pearl-icon .player-card__flow,
@@ -661,6 +1098,255 @@ p {
 .material-black-pearl-icon .player-card__inner,
 .material-ivory-gold-icon .player-card__inner {
   animation: pulseGlow 4s ease-in-out infinite alternate;
+}
+
+.material-brass .player-card__inner::before,
+.material-emerald .player-card__inner::before,
+.material-amethyst .player-card__inner::before,
+.material-sapphire .player-card__inner::before,
+.material-ruby .player-card__inner::before,
+.material-diamond .player-card__inner::before,
+.material-pink-diamond .player-card__inner::before,
+.material-supernova .player-card__inner::before,
+.material-dark-matter .player-card__inner::before,
+.material-rainbow-prism .player-card__inner::before,
+.material-black-hole .player-card__inner::before,
+.material-obsidian-gold .player-card__inner::before,
+.material-solar-gold .player-card__inner::before {
+  opacity: 0.9;
+}
+
+.material-brass .player-card__inner::before,
+.material-emerald .player-card__inner::before,
+.material-amethyst .player-card__inner::before {
+  opacity: 0.62;
+}
+
+.material-sapphire .player-card__inner::before,
+.material-ruby .player-card__inner::before {
+  opacity: 0.72;
+}
+
+.material-diamond .player-card__inner::after,
+.material-pink-diamond .player-card__inner::after {
+  opacity: 0.48;
+}
+
+.material-diamond:not([data-animation="none"]) .player-card__inner::after,
+.material-pink-diamond:not([data-animation="none"]) .player-card__inner::after {
+  animation: diamondSparkle 3.8s ease-in-out infinite alternate;
+}
+
+.material-sapphire .player-card__inner::after,
+.material-ruby .player-card__inner::after {
+  opacity: 0.22;
+}
+
+.material-supernova:not([data-animation="none"]) .player-card__inner::before {
+  animation: supernovaRays 18s linear infinite;
+}
+
+.material-supernova .player-card__inner::after {
+  opacity: 0.86;
+}
+
+.material-supernova:not([data-animation="none"]) .player-card__inner::after {
+  animation: flarePulse 4.8s ease-in-out infinite alternate;
+}
+
+.material-dark-matter .player-card__inner::before {
+  opacity: 0.74;
+}
+
+.material-dark-matter:not([data-animation="none"]) .player-card__inner::before {
+  animation: nebulaDrift 9s ease-in-out infinite alternate;
+}
+
+.material-dark-matter .player-card__inner::after {
+  opacity: 0.72;
+}
+
+.material-dark-matter:not([data-animation="none"]) .player-card__inner::after {
+  animation: starTwinkle 4.8s ease-in-out infinite alternate;
+}
+
+.material-rainbow-prism .player-card__inner::before {
+  opacity: 0.72;
+}
+
+.material-rainbow-prism:not([data-animation="none"]) .player-card__inner::before {
+  animation: prismAura 7s ease-in-out infinite alternate;
+}
+
+.material-rainbow-prism .player-card__inner::after {
+  opacity: 0.44;
+}
+
+.material-rainbow-prism:not([data-animation="none"]) .player-card__inner::after {
+  animation: cardSheen 6.5s linear infinite;
+}
+
+.material-black-hole .player-card__inner::before {
+  opacity: 0.72;
+}
+
+.material-black-hole:not([data-animation="none"]) .player-card__inner::before {
+  animation: blackHoleOrbit 13s linear infinite;
+}
+
+.material-black-hole .player-card__inner::after {
+  opacity: 0.58;
+}
+
+.material-black-hole:not([data-animation="none"]) .player-card__inner::after {
+  animation: vortexPulse 4.8s ease-in-out infinite alternate;
+}
+
+.material-obsidian-gold .player-card__inner::after,
+.material-solar-gold .player-card__inner::after {
+  opacity: 0.48;
+}
+
+.material-obsidian-gold:not([data-animation="none"]) .player-card__inner::after,
+.material-solar-gold:not([data-animation="none"]) .player-card__inner::after {
+  animation: diamondSparkle 4.6s ease-in-out infinite alternate;
+}
+
+.material-solar-gold:not([data-animation="none"]) .player-card__inner::before {
+  animation: supernovaRays 22s linear infinite;
+}
+
+.animation-subtle-wave[data-animation="subtle"] .player-card__flow,
+.animation-subtle-wave[data-animation="full"] .player-card__flow,
+.animation-shimmer[data-animation="subtle"] .player-card__flow,
+.animation-shimmer[data-animation="full"] .player-card__flow,
+.animation-glow-pulse[data-animation="subtle"] .player-card__flow,
+.animation-glow-pulse[data-animation="full"] .player-card__flow,
+.animation-shimmer[data-animation="subtle"] .player-card__sheen,
+.animation-shimmer[data-animation="full"] .player-card__sheen,
+.animation-premium-glow[data-animation="subtle"] .player-card__flow,
+.animation-premium-glow[data-animation="full"] .player-card__flow,
+.animation-radiant-burst[data-animation="subtle"] .player-card__flow,
+.animation-radiant-burst[data-animation="full"] .player-card__flow,
+.animation-nebula-drift[data-animation="subtle"] .player-card__flow,
+.animation-nebula-drift[data-animation="full"] .player-card__flow,
+.animation-iridescent-shift[data-animation="subtle"] .player-card__sheen,
+.animation-iridescent-shift[data-animation="full"] .player-card__sheen,
+.animation-energy-vortex[data-animation="subtle"] .player-card__flow,
+.animation-energy-vortex[data-animation="full"] .player-card__flow {
+  animation: waveSweep var(--flow-duration, 7s) infinite ease-in-out;
+}
+
+.animation-subtle-wave[data-animation="subtle"] .player-card__flow,
+.animation-shimmer[data-animation="subtle"] .player-card__flow,
+.animation-glow-pulse[data-animation="subtle"] .player-card__flow,
+.animation-premium-glow[data-animation="subtle"] .player-card__flow {
+  opacity: 0.42;
+}
+
+.animation-subtle-wave[data-animation="full"] .player-card__flow,
+.animation-shimmer[data-animation="full"] .player-card__flow,
+.animation-glow-pulse[data-animation="full"] .player-card__flow,
+.animation-premium-glow[data-animation="full"] .player-card__flow {
+  opacity: 0.62;
+}
+
+.animation-shimmer[data-animation="subtle"] .player-card__sheen,
+.animation-shimmer[data-animation="full"] .player-card__sheen,
+.animation-iridescent-shift[data-animation="subtle"] .player-card__sheen,
+.animation-iridescent-shift[data-animation="full"] .player-card__sheen {
+  animation-name: cardSheen;
+}
+
+.animation-subtle-glow[data-animation="subtle"] .player-card__inner,
+.animation-subtle-glow[data-animation="full"] .player-card__inner,
+.animation-glow-pulse[data-animation="subtle"] .player-card__inner,
+.animation-glow-pulse[data-animation="full"] .player-card__inner,
+.animation-premium-glow[data-animation="subtle"] .player-card__inner,
+.animation-premium-glow[data-animation="full"] .player-card__inner {
+  animation: pulseGlow 4.8s ease-in-out infinite alternate;
+}
+
+.animation-radiant-burst[data-animation="subtle"] .player-card__outer-effect,
+.animation-nebula-drift[data-animation="subtle"] .player-card__outer-effect,
+.animation-iridescent-shift[data-animation="subtle"] .player-card__outer-effect,
+.animation-energy-vortex[data-animation="subtle"] .player-card__outer-effect {
+  opacity: 0.36;
+}
+
+.animation-radiant-burst[data-animation="full"] .player-card__outer-effect,
+.animation-nebula-drift[data-animation="full"] .player-card__outer-effect,
+.animation-iridescent-shift[data-animation="full"] .player-card__outer-effect,
+.animation-energy-vortex[data-animation="full"] .player-card__outer-effect {
+  opacity: 0.58;
+  animation: outerAura 5.5s ease-in-out infinite alternate;
+}
+
+.animation-radiant-burst:not([data-animation="none"]) .player-card__outer-effect::before {
+  opacity: 0.8;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 198, 109, 0.42) 0deg 4deg, transparent 4deg 15deg);
+  animation: supernovaRays 8s linear infinite;
+}
+
+.animation-radiant-burst:not([data-animation="none"]) .player-card__outer-effect::after {
+  opacity: 0.7;
+  background: radial-gradient(circle, rgba(255, 245, 215, 0.72), rgba(251, 146, 60, 0.26) 24%, transparent 56%);
+  animation: flarePulse 3.4s ease-in-out infinite alternate;
+}
+
+.animation-nebula-drift:not([data-animation="none"]) .player-card__outer-effect::before {
+  opacity: 0.64;
+  background:
+    radial-gradient(ellipse at 34% 44%, rgba(168, 85, 247, 0.55), transparent 28%),
+    radial-gradient(ellipse at 68% 56%, rgba(59, 130, 246, 0.26), transparent 30%);
+  animation: nebulaDrift 8s ease-in-out infinite alternate;
+}
+
+.animation-nebula-drift:not([data-animation="none"]) .player-card__outer-effect::after {
+  opacity: 0.48;
+  background: radial-gradient(circle at 50% 50%, transparent 18%, rgba(168, 85, 247, 0.36) 22%, transparent 48%);
+  animation: slowSpin 13s linear infinite;
+}
+
+.animation-iridescent-shift:not([data-animation="none"]) .player-card__outer-effect::before {
+  opacity: 0.6;
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.42), rgba(250, 204, 21, 0.22), rgba(236, 72, 153, 0.42));
+  animation: prismAura 5.5s ease-in-out infinite alternate;
+}
+
+.animation-iridescent-shift:not([data-animation="none"]) .player-card__outer-effect::after {
+  opacity: 0.42;
+  background: linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.55) 48%, transparent 72%);
+  animation: cardSheen 4.8s linear infinite;
+}
+
+.animation-energy-vortex:not([data-animation="none"]) .player-card__outer-effect::before {
+  opacity: 0.76;
+  background: conic-gradient(from 0deg, transparent, rgba(168, 85, 247, 0.62), transparent, rgba(96, 165, 250, 0.38), transparent);
+  animation: blackHoleOrbit 6.5s linear infinite;
+}
+
+.animation-energy-vortex:not([data-animation="none"]) .player-card__outer-effect::after {
+  opacity: 0.82;
+  background: radial-gradient(circle, transparent 16%, rgba(5, 4, 10, 0.95) 18% 24%, rgba(168, 85, 247, 0.42) 25%, transparent 46%);
+  animation: vortexPulse 3.8s ease-in-out infinite alternate;
+}
+
+.animation-nebula-drift[data-animation="full"] .player-card__grain,
+.animation-energy-vortex[data-animation="full"] .player-card__grain {
+  animation: slowSpin 14s linear infinite;
+  transform-origin: center;
+}
+
+.animation-radiant-burst[data-animation="full"] .player-card__grain {
+  animation: pulseGlow 3.8s ease-in-out infinite alternate;
+}
+
+.player-card[data-animation="hover"]:hover .player-card__flow,
+.player-card[data-animation="hover"]:focus-visible .player-card__flow,
+.player-card[data-animation="hover"]:hover .player-card__sheen,
+.player-card[data-animation="hover"]:focus-visible .player-card__sheen {
+  animation: waveSweep var(--flow-duration, 5.8s) infinite ease-in-out;
 }
 
 .skeleton-card .player-card__inner {
@@ -791,6 +1477,121 @@ p {
   }
 }
 
+@keyframes cardSheen {
+  0% {
+    transform: translateX(-70%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.22;
+  }
+  62% {
+    transform: translateX(70%);
+    opacity: 0.34;
+  }
+  100% {
+    transform: translateX(88%);
+    opacity: 0;
+  }
+}
+
+@keyframes outerAura {
+  from {
+    transform: scale(0.98);
+    filter: blur(var(--card-outer-blur, 12px));
+  }
+  to {
+    transform: scale(1.04);
+    filter: blur(calc(var(--card-outer-blur, 12px) + 4px));
+  }
+}
+
+@keyframes diamondSparkle {
+  from {
+    opacity: 0.5;
+    filter: brightness(0.92);
+  }
+  to {
+    opacity: 0.86;
+    filter: brightness(1.25);
+  }
+}
+
+@keyframes starTwinkle {
+  from {
+    opacity: 0.42;
+    filter: brightness(0.85);
+  }
+  50% {
+    opacity: 0.84;
+    filter: brightness(1.2);
+  }
+  to {
+    opacity: 0.58;
+    filter: brightness(1);
+  }
+}
+
+@keyframes supernovaRays {
+  to {
+    transform: rotate(360deg) scale(1.05);
+  }
+}
+
+@keyframes flarePulse {
+  from {
+    transform: scale(0.86);
+    opacity: 0.42;
+  }
+  to {
+    transform: scale(1.08);
+    opacity: 0.82;
+  }
+}
+
+@keyframes nebulaDrift {
+  from {
+    transform: translate(-4px, 5px) scale(0.96);
+  }
+  to {
+    transform: translate(5px, -4px) scale(1.04);
+  }
+}
+
+@keyframes prismAura {
+  from {
+    transform: translateX(-8px) rotate(-2deg);
+    filter: saturate(1.05);
+  }
+  to {
+    transform: translateX(8px) rotate(2deg);
+    filter: saturate(1.32);
+  }
+}
+
+@keyframes blackHoleOrbit {
+  to {
+    transform: rotate(-360deg) scale(1.02);
+  }
+}
+
+@keyframes vortexPulse {
+  from {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.07);
+    opacity: 0.88;
+  }
+}
+
+@keyframes slowSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes shimmer {
   from {
     background-position: 200% 0;
@@ -867,5 +1668,23 @@ p {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .player-card,
+  .player-card::before,
+  .player-card::after,
+  .player-card__inner,
+  .player-card__flow,
+  .player-card__grain,
+  .player-card__sheen,
+  .player-card__outer-effect {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .player-card__outer-effect,
+  .player-card__flow,
+  .player-card__sheen {
+    opacity: 0 !important;
   }
 }

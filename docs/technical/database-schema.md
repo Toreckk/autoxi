@@ -149,6 +149,7 @@ Columns:
 - `broad_line enum`
 - `stat_profile enum`
 - `role enum`
+- `edition_key enum`
 - `cost int`
 - `material_key enum`
 - `created_at timestamptz`
@@ -158,6 +159,7 @@ Indexes:
 
 - index `rating`
 - index `tier`
+- index `edition_key`
 - index `position`
 - index `broad_line`
 - index `nation_id`
@@ -199,6 +201,65 @@ Columns:
 Constraints:
 
 - each stat between 0 and 99
+
+### `world_cup_edition_team_results`
+
+Purpose: tournament-level team outcomes for host/champion/finalist/semifinalist-style queries.
+
+Columns:
+
+- `id uuid primary key`
+- `world_cup_edition_id uuid`
+- `nation_id uuid`
+- `final_rank int nullable`
+- `result_code text`
+- `created_at timestamptz`
+
+Indexes:
+
+- index `(world_cup_edition_id, result_code)`
+- unique `(world_cup_edition_id, nation_id, result_code)`
+
+### `world_cup_awards`
+
+Purpose: normalized award definitions for edition-specific cards and ingestion.
+
+Columns:
+
+- `id uuid primary key`
+- `code text unique`
+- `label text`
+- `description text nullable`
+- `created_at timestamptz`
+
+Initial award codes:
+
+- `GOLDEN_BOOT`
+- `GOLDEN_BALL`
+- `BEST_YOUNG_PLAYER`
+- `GOLDEN_GLOVE`
+
+### `world_cup_award_winners`
+
+Purpose: link award winners to an edition, optional internal identity/card, nation, and raw source winner text.
+
+Columns:
+
+- `id uuid primary key`
+- `world_cup_edition_id uuid`
+- `award_id uuid`
+- `player_identity_id uuid nullable`
+- `player_card_id uuid nullable`
+- `nation_id uuid nullable`
+- `source_player_id uuid nullable`
+- `raw_winner_name text nullable`
+- `notes text nullable`
+- `created_at timestamptz`
+
+Indexes:
+
+- index `(world_cup_edition_id, award_id)`
+- unique `(world_cup_edition_id, award_id)`
 
 ### Optional: `card_tags`
 

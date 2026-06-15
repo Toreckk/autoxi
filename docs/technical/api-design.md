@@ -96,6 +96,8 @@ type PublicPlayerCardDto = {
     label: string;
   };
   role: CardRole;
+  editionKey: "NONE" | "GOLDEN_BOOT" | "GOLDEN_BALL" | "BEST_YOUNG_PLAYER" | "GOLDEN_GLOVE";
+  editionLabel?: string | null;
   stats:
     | {
         profile: "OUTFIELD";
@@ -116,9 +118,22 @@ type PublicPlayerCardDto = {
         positioning: number;
       };
   materialKey: string;
+  animationPreset:
+    | "none"
+    | "subtle-glow"
+    | "subtle-wave"
+    | "shimmer"
+    | "glow-pulse"
+    | "premium-glow"
+    | "radiant-burst"
+    | "nebula-drift"
+    | "iridescent-shift"
+    | "energy-vortex";
   animationLevel: "none" | "subtle" | "medium" | "premium";
 };
 ```
+
+`materialKey` and `animationPreset` are resolved presentation values. Normal cards derive them from tier. Special editions derive them from `editionKey`, so the DB can keep a base tier material while the public API returns the edition-specific visual profile.
 
 ## Sorting
 

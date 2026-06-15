@@ -2,7 +2,7 @@
 
 The card direction is football-card-readable and material-driven. It can borrow the broad readability conventions of sports cards, while staying original enough to avoid copying FUT-style frames, proprietary silhouettes, real footballer photos, official tournament branding, club branding, or player likenesses.
 
-The strongest visual inspiration should come from premium material treatments: phase shifts, emerald, ruby, sapphire/cobalt, black pearl, ivory/gold, pearlescent sheen, and animated light sweeps. The result should feel like a collectible football card made out of rare materials, not a clone of an existing football-card product.
+The current direction is a simplified CSS material system: consistent card footprint, thin borders, inset lines, subtle diagonal overlays, simple gradients, and restrained motion. Premium and special-edition cards can have a little more shimmer, but the base grid should stay readable and calm rather than looking like complex fantasy cards.
 
 ## Visual Reference
 
@@ -58,7 +58,7 @@ Useful prototype ideas:
 - tier CSS variables like `--border-glow` and `--flow-color`,
 - moving gradient `.flow-effect`,
 - material/skin-inspired backgrounds per tier,
-- tier 7 premium corner/filigree or inlay treatment,
+- premium sparkle or light sweep for diamond, pink diamond, and special editions only,
 - top stat block, center name, bottom tournament plate.
 
 Do not keep:
@@ -73,7 +73,15 @@ Do not keep:
 
 ## CSS Direction
 
-Use Tailwind for layout and component structure. Use CSS modules or a small global CSS file for card animations and tier material variables.
+Use the existing global card CSS for card animations and tier material variables. The card should be driven mostly by a small set of variables:
+
+- `--card-bg`
+- `--card-border-glow`
+- `--card-flow-color`
+- `--card-plate-bg`
+- `--card-accent`
+
+Avoid per-card bespoke markup. Special editions should still use the same `PlayerCard` component and resolve their presentation from `editionKey`.
 
 Recommended CSS concepts:
 
@@ -118,24 +126,36 @@ Use these exact tier mappings:
 
 | Tier | Name | Material |
 | --- | --- | --- |
-| 1 | Squad Player | matte graphite / carbon weave |
-| 2 | Starter | brushed steel / cyan steel phase |
-| 3 | Key Player | emerald composite / green phase |
-| 4 | Star | amethyst/violet phase |
-| 5 | World Class | cobalt/sapphire phase with restrained gold trim |
-| 6 | Hero | ruby/crimson high-sheen material |
-| 7 | Icon | black pearl or ivory/gold/pearl material with strongest premium glow |
+| 1 | Squad Player | gold / brass |
+| 2 | Starter | emerald |
+| 3 | Key Player | amethyst |
+| 4 | Star | sapphire |
+| 5 | World Class | ruby |
+| 6 | Hero | diamond |
+| 7 | Icon | pink diamond |
 
 Suggested material keys:
 
-- `matte-graphite`
-- `brushed-steel`
-- `emerald-composite`
-- `violet-phase`
-- `cobalt-gold`
-- `ruby-hero`
-- `black-pearl-icon`
-- `ivory-gold-icon`
+- `brass`
+- `emerald`
+- `amethyst`
+- `sapphire`
+- `ruby`
+- `diamond`
+- `pink-diamond`
+
+## Special Editions
+
+Special editions are presentation overrides derived from `editionKey`:
+
+| Edition | Material Key | Badge |
+| --- | --- | --- |
+| Golden Boot | `obsidian-gold` | Golden Boot |
+| Golden Ball | `solar-gold` | Golden Ball |
+| Best Young Player | `rainbow-prism` | Best Young Player |
+| Golden Glove | `black-hole` | Golden Glove |
+
+Special edition badges render above the player name. Solar gold must not include a crown icon; represent it with warm gold/orange gradients and subtle radial line accents.
 
 ## Legal-Safety Design Rules
 
@@ -145,7 +165,7 @@ This is not legal advice, but the implementation should reduce avoidable IP/trad
 - Do not recreate FUT card frames, chemistry layouts, pack marks, or official labels.
 - Do not use real player likenesses or silhouettes.
 - Do not use official FIFA, EA, FUT, World Cup, federation, club, Counter-Strike, or CS:GO branding.
-- Use generic internal material names in code where possible, such as `ruby-hero` or `black-pearl-icon`.
+- Use generic internal material names in code where possible, such as `diamond`, `pink-diamond`, `obsidian-gold`, or `solar-gold`.
 - Let the inspiration show through color, material, lighting, and motion rather than copied shapes or names.
 - Avoid production-facing labels like `Doppler`, `Crimson Web`, `Obsidian Pearl`, `Lore Master`, `FUT`, or `FIFA`.
 

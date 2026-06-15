@@ -42,7 +42,10 @@ export function CardDetailDrawer({
       >
         <header>
           <div>
-            <p className="eyebrow">{card.tier.replaceAll("_", " ")}</p>
+            <p className="eyebrow">
+              {card.tier.replaceAll("_", " ")}
+              {card.editionLabel ? ` / ${card.editionLabel}` : ""}
+            </p>
             <h2 id="card-detail-title">{card.displayName}</h2>
           </div>
           <button className="icon-button" type="button" title="Close detail" onClick={onClose}>
@@ -50,7 +53,7 @@ export function CardDetailDrawer({
           </button>
         </header>
 
-        <PlayerCardCompact card={card} animationMode="subtle" />
+        <PlayerCardCompact card={card} animationMode="full" />
 
         <dl className="detail-list">
           <div>
@@ -68,6 +71,12 @@ export function CardDetailDrawer({
             <dt>Role</dt>
             <dd>{card.role}</dd>
           </div>
+          {card.editionLabel ? (
+            <div>
+              <dt>Special Edition</dt>
+              <dd>{card.editionLabel}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Cost</dt>
             <dd>{card.cost}</dd>

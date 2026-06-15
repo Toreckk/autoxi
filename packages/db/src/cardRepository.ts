@@ -22,6 +22,9 @@ import {
   STAT_KEYS,
   VISIBLE_POSITIONS,
   animationLevelForTier,
+  effectiveAnimationPresetForCard,
+  effectiveMaterialForCard,
+  editionLabelForKey,
   normalizeCardQuery,
   publicPlayerCardSchema,
   type CardFilterMetadataDto,
@@ -70,6 +73,7 @@ type CardRow = {
   broadLine: PublicPlayerCardDto["broadLine"];
   statProfile: PublicPlayerCardDto["statProfile"];
   role: PublicPlayerCardDto["role"];
+  editionKey: PublicPlayerCardDto["editionKey"];
   materialKey: PublicPlayerCardDto["materialKey"];
   nationId: string;
   nationCode: string | null;
@@ -278,6 +282,7 @@ export class CardRepository {
       broadLine: playerCards.broadLine,
       statProfile: playerCards.statProfile,
       role: playerCards.role,
+      editionKey: playerCards.editionKey,
       materialKey: playerCards.materialKey,
       nationId: nations.id,
       nationCode: nations.fifaCode,
@@ -327,6 +332,8 @@ export class CardRepository {
         label: `${row.host} ${row.year}`
       },
       role: row.role,
+      editionKey: row.editionKey,
+      editionLabel: editionLabelForKey(row.editionKey),
       stats:
         row.statProfile === "GOALKEEPER"
           ? {
@@ -347,7 +354,8 @@ export class CardRepository {
               defending: requiredStat(row.defending, "defending", row.id),
               physical: requiredStat(row.physical, "physical", row.id)
             },
-      materialKey: row.materialKey,
+      materialKey: effectiveMaterialForCard(row.tier, row.editionKey),
+      animationPreset: effectiveAnimationPresetForCard(row.tier, row.editionKey),
       animationLevel: animationLevelForTier(row.tier)
     });
   }
