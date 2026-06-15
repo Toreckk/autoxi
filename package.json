@@ -13,6 +13,9 @@
     "db:generate": "pnpm -F @autoxi/db db:generate",
     "db:migrate": "pnpm -F @autoxi/db db:migrate",
     "db:seed": "pnpm -F @autoxi/db db:seed",
-    "db:studio": "pnpm -F @autoxi/db db:studio"
+    "db:studio": "pnpm -F @autoxi/db db:studio",
+    "db:rating-lab": "pnpm --filter @autoxi/db rating-lab",
+    "db:rating-lab:gate": "pnpm --filter @autoxi/db rating-lab:gate",
+    "db:rating-lab:compare": "pnpm --filter @autoxi/db rating-lab:compare"
   }
 }

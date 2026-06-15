@@ -18,11 +18,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run src",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx src/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "rating-lab": "tsx src/ingestion/rating-lab/runRatingLab.ts",
+    "rating-lab:gate": "tsx src/ingestion/rating-lab/runRatingGateCheck.ts",
+    "rating-lab:compare": "tsx src/ingestion/rating-lab/runRatingLabCompare.ts"
   },
   "dependencies": {
     "@autoxi/domain": "workspace:*",

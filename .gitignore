@@ -36,3 +36,5 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 .turbo/
+data/import-reports/
+data/sources/

@@ -8,6 +8,8 @@ Import World Cup player/squad/tournament data into the card catalog schema, gene
 
 The Phase 1B catalog uses one canonical card per player identity per World Cup edition. Award/special editions replace the card's visual treatment through `editionKey`. They do not create duplicate cards for the same player/year.
 
+Before final Phase 1B ingestion, run the pre-Phase-1B rating lab preset, review gate results, compare against an accepted baseline, inspect CSV reports, and optionally eye-test a dev sample in Collection.
+
 ## What Stays From Phase 1
 
 - Curated fictional seed data remains permanent local/dev/test/demo data.
