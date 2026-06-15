@@ -20,6 +20,7 @@ import {
   seedEditions,
   seedImportId,
   seedNations,
+  seedTeamResults,
   seedWorldCupAwards
 } from "./seedData.js";
 
@@ -71,19 +72,20 @@ async function seed() {
         }))
       );
 
-      for (const [year, hostName, hostCountryCode] of seedEditions) {
+      for (const [year, flagCode, resultCode, finalRank] of seedTeamResults) {
         const [edition] = await tx.select().from(worldCupEditions).where(eq(worldCupEditions.year, year)).limit(1);
-        const [hostNation] = await tx.select().from(nations).where(eq(nations.iso3Code, hostCountryCode)).limit(1);
+        const [resultNation] = await tx.select().from(nations).where(eq(nations.flagCode, flagCode)).limit(1);
 
-        if (edition && hostNation) {
+        if (edition && resultNation) {
           await tx.insert(worldCupEditionTeamResults).values({
-            id: deterministicUuid(`edition-result-${year}-${hostCountryCode}-HOST`),
+            id: deterministicUuid(`edition-result-${year}-${flagCode}-${resultCode}`),
             worldCupEditionId: edition.id,
-            nationId: hostNation.id,
-            resultCode: "HOST"
+            nationId: resultNation.id,
+            finalRank,
+            resultCode
           });
-        } else if (!edition) {
-          throw new Error(`Missing seed edition for ${hostName} ${year}`);
+        } else {
+          throw new Error(`Missing seed team result relation for ${year} ${flagCode} ${resultCode}`);
         }
       }
 
@@ -197,6 +199,7 @@ async function seed() {
             playerCardId: cardId,
             nationId: nation.id,
             sourcePlayerId,
+            rawWinnerName: null,
             notes: "Fictional public-safe award winner for visual testing."
           });
         }

@@ -11,13 +11,20 @@ const forbiddenPublicFields = [
   "riskScore",
   "approvalNotes",
   "generationPrompt",
-  "internalSourceName"
+  "internalSourceName",
+  "aliasNotes",
+  "unapprovedAliases",
+  "rawWinnerName",
+  "awardSourceName",
+  "sourceAwardWinnerName",
+  "rawAwardWinnerName"
 ];
 
 describe("API public safety", () => {
   it("keeps the forbidden public field list explicit", () => {
     expect(forbiddenPublicFields).toContain("rawName");
     expect(forbiddenPublicFields).toContain("sourceImportId");
+    expect(forbiddenPublicFields).toContain("rawWinnerName");
   });
 
   it("keeps representative public card DTOs free of private source fields", () => {
@@ -62,9 +69,13 @@ describe("API public safety", () => {
       tags: ["tempo"]
     });
 
-    expect(collectObjectKeys(card)).not.toEqual(expect.arrayContaining(forbiddenPublicFields));
+    expectNoForbiddenPublicFields(card, forbiddenPublicFields);
   });
 });
+
+function expectNoForbiddenPublicFields(value: unknown, forbiddenFields: string[]): void {
+  expect(collectObjectKeys(value)).not.toEqual(expect.arrayContaining(forbiddenFields));
+}
 
 function collectObjectKeys(value: unknown): string[] {
   if (!value || typeof value !== "object") {

@@ -166,6 +166,12 @@ Indexes:
 - index `world_cup_edition_id`
 - unique `(player_identity_id, world_cup_edition_id)`
 
+The unique card constraint is intentionally canonical. A player should not have both a normal card and a special-edition card for the same World Cup edition. Award/special editions set `edition_key` on this one card instead of creating duplicate `player_cards` rows.
+
+Constraints:
+
+- `rating` between 55 and 99
+
 ### `player_card_outfield_stats`
 
 Purpose: hidden outfield stat block for non-GK cards.
@@ -259,7 +265,12 @@ Columns:
 Indexes:
 
 - index `(world_cup_edition_id, award_id)`
-- unique `(world_cup_edition_id, award_id)`
+- index `player_identity_id`
+- index `player_card_id`
+
+Do not enforce one winner per award per tournament at the DB level. Some awards can be shared, unresolved, or ambiguous during import. Phase 1B ingestion should report duplicates/ambiguity instead of failing the schema.
+
+`world_cup_award_winners` is historical metadata. `player_cards.edition_key` remains the chosen visual edition for public rendering.
 
 ### Optional: `card_tags`
 
@@ -296,6 +307,14 @@ Columns:
 
 Plan but do not implement yet:
 
+- `card_prints` / `card_variants` for future multiple visual versions of the same canonical card:
+  - `id`
+  - `player_card_id`
+  - `card_set_key`
+  - `edition_key`
+  - `render_profile_key`
+  - `is_default`
+  - `is_collection_variant`
 - `users`
 - `collection_discovery`
 - `runs`

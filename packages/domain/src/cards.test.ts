@@ -20,6 +20,7 @@ import {
   materialForTier,
   normalizeCardQuery,
   publicPlayerCardSchema,
+  resolveEditionKeyFromAwards,
   statProfileForPosition,
   tierRank
 } from "./cards.js";
@@ -67,6 +68,55 @@ describe("card domain helpers", () => {
     expect(normalizeCardQuery({ minRating: 90, maxRating: 75 })).toMatchObject({
       minRating: 75,
       maxRating: 90
+    });
+  });
+
+  it("validates card and filter ratings inside the supported 55-99 range", () => {
+    const validCard = {
+      id: "00000000-0000-4000-8000-000000000011",
+      displayName: "Boundary Player",
+      shortName: "Boundary",
+      rating: 55,
+      tier: "SQUAD_PLAYER",
+      position: "CM",
+      broadLine: "MIDFIELDER",
+      statProfile: "OUTFIELD",
+      role: "Creator",
+      cost: 1,
+      editionKey: "NONE",
+      editionLabel: null,
+      materialKey: "brass",
+      animationPreset: "none",
+      animationLevel: "none",
+      nation: {
+        id: "00000000-0000-4000-8000-000000000012",
+        code: "TST",
+        name: "Testland",
+        flagCode: "tst"
+      },
+      worldCup: {
+        id: "00000000-0000-4000-8000-000000000013",
+        host: "Testland",
+        year: 2026,
+        label: "Testland 2026"
+      },
+      stats: {
+        profile: "OUTFIELD",
+        pace: 55,
+        shooting: 55,
+        passing: 55,
+        dribbling: 55,
+        defending: 55,
+        physical: 55
+      }
+    };
+
+    expect(publicPlayerCardSchema.parse(validCard).rating).toBe(55);
+    expect(() => publicPlayerCardSchema.parse({ ...validCard, rating: 54 })).toThrow();
+    expect(() => normalizeCardQuery({ minRating: 54 })).toThrow();
+    expect(normalizeCardQuery({ minRating: 55, maxRating: 99 })).toMatchObject({
+      minRating: 55,
+      maxRating: 99
     });
   });
 
@@ -200,6 +250,28 @@ describe("card domain helpers", () => {
     expect(effectiveAnimationPresetForCard("ICON", "GOLDEN_BALL")).toBe("glow-pulse");
     expect(effectiveMaterialForCard("ICON", "BEST_YOUNG_PLAYER")).toBe("rainbow-prism");
     expect(effectiveMaterialForCard("ICON", "GOLDEN_GLOVE")).toBe("black-hole");
+  });
+
+  it("resolves one deterministic visual edition from award keys", () => {
+    expect(resolveEditionKeyFromAwards({ position: "CM", awardKeys: [] })).toBe("NONE");
+    expect(
+      resolveEditionKeyFromAwards({
+        position: "CAM",
+        awardKeys: ["BEST_YOUNG_PLAYER", "GOLDEN_BOOT"]
+      })
+    ).toBe("GOLDEN_BOOT");
+    expect(
+      resolveEditionKeyFromAwards({
+        position: "ST",
+        awardKeys: ["GOLDEN_BOOT", "GOLDEN_BALL"]
+      })
+    ).toBe("GOLDEN_BALL");
+    expect(
+      resolveEditionKeyFromAwards({
+        position: "GK",
+        awardKeys: ["GOLDEN_BALL", "GOLDEN_GLOVE"]
+      })
+    ).toBe("GOLDEN_GLOVE");
   });
 
   it("has broad-line metadata for every visible position", () => {

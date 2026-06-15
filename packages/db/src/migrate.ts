@@ -20,13 +20,13 @@ async function migrate() {
     const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
 
     for (const file of migrationFiles) {
-      const id = file.replace(/\.sql$/, "");
+      const migrationId = file.replace(/\.sql$/, "");
       const [existing] = await client<{ id: string }[]>`
-        SELECT id FROM __autoxi_migrations WHERE id = ${id}
+        SELECT id FROM __autoxi_migrations WHERE id = ${migrationId}
       `;
 
       if (existing) {
-        console.info(`[db:migrate] ${id} already applied`);
+        console.info(`[db:migrate] ${migrationId} already applied`);
         continue;
       }
 
@@ -36,11 +36,11 @@ async function migrate() {
         await tx.unsafe(sql);
         await tx`
           INSERT INTO __autoxi_migrations (id)
-          VALUES (${id})
+          VALUES (${migrationId})
         `;
       });
 
-      console.info(`[db:migrate] applied ${id}`);
+      console.info(`[db:migrate] applied ${migrationId}`);
     }
   } finally {
     await client.end();

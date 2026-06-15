@@ -38,6 +38,8 @@ Supported query params:
 - `page`
 - `pageSize`
 
+`minRating` and `maxRating` accept 55-99. Stats remain 0-99.
+
 Example:
 
 ```text
@@ -135,6 +137,8 @@ type PublicPlayerCardDto = {
 
 `materialKey` and `animationPreset` are resolved presentation values. Normal cards derive them from tier. Special editions derive them from `editionKey`, so the DB can keep a base tier material while the public API returns the edition-specific visual profile.
 
+The public API returns one canonical card per player identity per World Cup edition. Award/special editions replace that card's visual treatment through `editionKey`; they do not create duplicate normal and special cards for the same player/year.
+
 ## Sorting
 
 Initial sort keys:
@@ -163,6 +167,12 @@ Public endpoints must not return:
 - `approvalNotes`
 - `generationPrompt`
 - `internalSourceName`
+- `aliasNotes`
+- `unapprovedAliases`
+- `rawWinnerName`
+- `awardSourceName`
+- `sourceAwardWinnerName`
+- `rawAwardWinnerName`
 
 Public API safety tests must assert these fields are absent from both `GET /cards` and `GET /cards/:id`.
 

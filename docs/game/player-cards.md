@@ -14,6 +14,10 @@ Examples:
 
 Different World Cup versions of the same underlying identity are separate cards. Later, a run cannot own two versions of the same underlying player identity at the same time.
 
+The Phase 1B catalog uses one canonical card per player identity per World Cup edition. Award/special editions replace the card's visual treatment through `editionKey`. They do not create duplicate cards for the same player/year.
+
+If the game later needs multiple visual versions of the same player/year, for example expansion cosmetics, limited-time prints, alternate art, or shop variants, add a separate `card_prints` or `card_variants` table linked to `player_cards`. Do not overload `player_cards` for this in Phase 1B.
+
 ## Public Safety
 
 The client should receive fictional public names only. Raw source names must remain internal and should be used only for private audit/admin workflows.
@@ -60,6 +64,7 @@ Public card DTOs must not include:
 
 - raw source player name,
 - raw source provider IDs,
+- raw award winner names,
 - audit mapping,
 - alias risk notes,
 - unapproved aliases.
@@ -88,6 +93,21 @@ Special editions are driven by `editionKey`; they can override the visible prese
 | `GOLDEN_BALL` | Golden Ball | solar gold |
 | `BEST_YOUNG_PLAYER` | Best Young Player | rainbow prism |
 | `GOLDEN_GLOVE` | Golden Glove | black hole |
+
+Award metadata is historical and can have multiple rows per tournament award. The card's `editionKey` is the chosen single visual treatment. When multiple awards apply, resolve one edition deterministically: GK cards prefer Golden Glove, then Golden Ball; outfield cards prefer Golden Ball, Golden Boot, then Best Young Player.
+
+Future-only card variant shape, if needed:
+
+```text
+card_prints
+- id
+- player_card_id
+- card_set_key
+- edition_key
+- render_profile_key
+- is_default
+- is_collection_variant
+```
 
 ## Costs
 

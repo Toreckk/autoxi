@@ -206,6 +206,14 @@ export const CARD_EDITION_CONFIG = {
   }
 } as const satisfies Record<CardEditionKey, CardEditionConfig>;
 
+export const CARD_EDITION_PRIORITY = [
+  "GOLDEN_BALL",
+  "GOLDEN_BOOT",
+  "GOLDEN_GLOVE",
+  "BEST_YOUNG_PLAYER",
+  "NONE"
+] as const satisfies readonly CardEditionKey[];
+
 export const CARD_TIER_CONFIG_BY_CODE = {
   SQUAD_PLAYER: {
     code: "SQUAD_PLAYER",
@@ -307,6 +315,7 @@ export const POSITION_CONFIG_BY_CODE = {
 } as const satisfies Record<VisiblePosition, PositionConfig>;
 
 export const integerStatSchema = z.number().int().min(0).max(99);
+export const cardRatingSchema = z.number().int().min(55).max(99);
 
 export const outfieldCardStatsSchema = z.object({
   profile: z.literal("OUTFIELD"),
@@ -341,7 +350,7 @@ export const publicPlayerCardSchema = z.object({
   id: z.string().uuid(),
   displayName: z.string().min(1),
   shortName: z.string().min(1),
-  rating: z.number().int().min(1).max(99),
+  rating: cardRatingSchema,
   tier: z.enum(CARD_TIERS),
   cost: z.number().int().nonnegative(),
   position: z.enum(VISIBLE_POSITIONS),
@@ -374,8 +383,8 @@ export type PublicPlayerCardDto = z.infer<typeof publicPlayerCardSchema>;
 export const cardFilterQuerySchema = z.object({
   search: z.string().trim().min(1).max(80).optional(),
   tier: z.enum(CARD_TIERS).optional(),
-  minRating: z.coerce.number().int().min(1).max(99).optional(),
-  maxRating: z.coerce.number().int().min(1).max(99).optional(),
+  minRating: z.coerce.number().int().min(55).max(99).optional(),
+  maxRating: z.coerce.number().int().min(55).max(99).optional(),
   position: z.enum(VISIBLE_POSITIONS).optional(),
   broadLine: z.enum(BROAD_LINES).optional(),
   nation: z.string().trim().min(2).max(64).optional(),
@@ -459,6 +468,22 @@ export function effectiveMaterialForCard(tier: CardTier, editionKey: CardEdition
 
 export function effectiveAnimationPresetForCard(tier: CardTier, editionKey: CardEditionKey): AnimationPreset {
   return CARD_EDITION_CONFIG[editionKey].animationPresetOverride ?? animationPresetForTier(tier);
+}
+
+export function resolveEditionKeyFromAwards({
+  position,
+  awardKeys
+}: {
+  position: VisiblePosition;
+  awardKeys: readonly CardEditionKey[];
+}): CardEditionKey {
+  const availableAwards = new Set<CardEditionKey>(awardKeys);
+  const priority: readonly CardEditionKey[] =
+    position === "GK"
+      ? ["GOLDEN_GLOVE", "GOLDEN_BALL", "GOLDEN_BOOT", "BEST_YOUNG_PLAYER", "NONE"]
+      : CARD_EDITION_PRIORITY;
+
+  return priority.find((editionKey) => editionKey === "NONE" || availableAwards.has(editionKey)) ?? "NONE";
 }
 
 export function animationLevelForTier(tier: CardTier): AnimationLevel {

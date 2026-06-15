@@ -132,6 +132,17 @@ export const seedWorldCupAwards = [
   ["GOLDEN_GLOVE", "Golden Glove", "Best goalkeeper award."]
 ] as const;
 
+export const seedTeamResults = [
+  [1998, "fra", "HOST", null],
+  [1998, "fra", "CHAMPION", 1],
+  [1998, "bra", "RUNNER_UP", 2],
+  [2014, "bra", "HOST", null],
+  [2014, "ger", "CHAMPION", 1],
+  [2014, "arg", "RUNNER_UP", 2],
+  [2022, "arg", "CHAMPION", 1],
+  [2022, "fra", "RUNNER_UP", 2]
+] as const;
+
 export const seedCards = cards.map((card, index) => {
   const tier = deriveTier(card.rating);
   const statProfile = statProfileForPosition(card.position);

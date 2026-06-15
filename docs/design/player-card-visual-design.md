@@ -83,6 +83,8 @@ Use the existing global card CSS for card animations and tier material variables
 
 Avoid per-card bespoke markup. Special editions should still use the same `PlayerCard` component and resolve their presentation from `editionKey`.
 
+The visual system renders one canonical card per player identity per World Cup edition. Award editions replace that card's material treatment through `editionKey`; they are not duplicate card rows. If alternate art or limited-time cosmetics are needed later, use a future `card_prints` or `card_variants` layer rather than changing the Phase 1B card component contract.
+
 Recommended CSS concepts:
 
 ```css
@@ -156,6 +158,8 @@ Special editions are presentation overrides derived from `editionKey`:
 | Golden Glove | `black-hole` | Golden Glove |
 
 Special edition badges render above the player name. Solar gold must not include a crown icon; represent it with warm gold/orange gradients and subtle radial line accents.
+
+If several awards apply to the same canonical card, the importer should resolve one visual edition deterministically before the card reaches the UI. GK cards prefer Golden Glove, then Golden Ball. Outfield cards prefer Golden Ball, Golden Boot, then Best Young Player.
 
 ## Legal-Safety Design Rules
 

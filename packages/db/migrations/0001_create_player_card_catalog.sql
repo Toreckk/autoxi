@@ -222,12 +222,15 @@ CREATE TABLE IF NOT EXISTS world_cup_award_winners (
   source_player_id uuid REFERENCES source_players(id) ON DELETE SET NULL,
   raw_winner_name text,
   notes text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT world_cup_award_winners_edition_award_unique UNIQUE (world_cup_edition_id, award_id)
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS world_cup_award_winners_edition_award_idx
   ON world_cup_award_winners (world_cup_edition_id, award_id);
+CREATE INDEX IF NOT EXISTS world_cup_award_winners_player_identity_idx
+  ON world_cup_award_winners (player_identity_id);
+CREATE INDEX IF NOT EXISTS world_cup_award_winners_player_card_idx
+  ON world_cup_award_winners (player_card_id);
 
 CREATE TABLE IF NOT EXISTS player_card_outfield_stats (
   card_id uuid PRIMARY KEY REFERENCES player_cards(id) ON DELETE CASCADE,

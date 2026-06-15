@@ -8,7 +8,7 @@ import {
   statProfileForPosition,
   type StatKey
 } from "@autoxi/domain";
-import { seedCards } from "./seedData.js";
+import { seedCards, seedTeamResults, seedWorldCupAwards } from "./seedData.js";
 
 describe("curated seed cards", () => {
   it("uses the position-derived stat profile for every card", () => {
@@ -61,5 +61,18 @@ describe("curated seed cards", () => {
         editionConfig.materialKeyOverride
       );
     }
+  });
+
+  it("includes award definitions and tournament result metadata for local development", () => {
+    expect(seedWorldCupAwards.map(([code]) => code).sort()).toEqual([
+      "BEST_YOUNG_PLAYER",
+      "GOLDEN_BALL",
+      "GOLDEN_BOOT",
+      "GOLDEN_GLOVE"
+    ]);
+
+    expect(seedTeamResults.some(([, , resultCode]) => resultCode === "HOST")).toBe(true);
+    expect(seedTeamResults.some(([, , resultCode]) => resultCode === "CHAMPION")).toBe(true);
+    expect(seedTeamResults.some(([, , resultCode]) => resultCode === "RUNNER_UP")).toBe(true);
   });
 });

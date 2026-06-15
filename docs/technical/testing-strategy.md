@@ -8,6 +8,7 @@ Test pure helpers:
 
 - tier derivation from rating,
 - tier material and special-edition presentation derivation,
+- deterministic edition resolution from award keys,
 - stat validation,
 - position to broad-line mapping,
 - filter normalization,
@@ -22,6 +23,8 @@ Test:
 - repository query behavior with seeded test data,
 - public DTO mapping excludes raw names,
 - public DTO mapping resolves special-edition `materialKey`, `editionLabel`, and `animationPreset` from `editionKey`,
+- repository mapper returns only outfield stats for outfield cards and only GK stats for GK cards,
+- API/controller responses recursively exclude raw/source/private fields,
 - card detail 404 behavior.
 
 Public card API safety tests must assert `GET /cards` and `GET /cards/:id` never include:
@@ -36,6 +39,12 @@ Public card API safety tests must assert `GET /cards` and `GET /cards/:id` never
 - `approvalNotes`
 - `generationPrompt`
 - `internalSourceName`
+- `aliasNotes`
+- `unapprovedAliases`
+- `rawWinnerName`
+- `awardSourceName`
+- `sourceAwardWinnerName`
+- `rawAwardWinnerName`
 
 ## Frontend Tests
 

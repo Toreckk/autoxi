@@ -261,10 +261,8 @@ export const worldCupAwardWinners = pgTable(
   },
   (table) => ({
     editionAwardIdx: index("world_cup_award_winners_edition_award_idx").on(table.worldCupEditionId, table.awardId),
-    editionAwardUnique: unique("world_cup_award_winners_edition_award_unique").on(
-      table.worldCupEditionId,
-      table.awardId
-    )
+    playerIdentityIdx: index("world_cup_award_winners_player_identity_idx").on(table.playerIdentityId),
+    playerCardIdx: index("world_cup_award_winners_player_card_idx").on(table.playerCardId)
   })
 );
 
