@@ -41,11 +41,12 @@ export function resolveCardRating(cardContext: FjelstulCardContext, sources: Rat
   }
 
   const ea = findExternal(cardContext, sources.eaHistorical ?? []);
-  let externalStats = ea?.stats;
+  let externalStats: ExternalRatingRecord["stats"];
   if (!manual && ea?.overall !== undefined && ea.confidence === "HIGH") {
     overall = ea.overall;
     confidence = "HIGH";
     primarySource = "EA_HISTORICAL";
+    externalStats = ea.stats;
     evidence.unshift({ source: "EA_HISTORICAL", confidence: ea.confidence, value: ea.overall, reason: ea.reason });
     reasons.push(ea.reason);
   }

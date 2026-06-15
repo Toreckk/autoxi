@@ -1,4 +1,4 @@
-import type { RatingLabCardReport, RatingLabSummary } from "./types.js";
+import type { RatingLabCardReport, RatingLabSummary, SevenAZeroManualReferenceResult } from "./types.js";
 
 export type RatingLabReports = {
   summary: RatingLabSummary;
@@ -8,5 +8,6 @@ export type RatingLabReports = {
   awardWinners: RatingLabCardReport[];
   generatedOnlyOutliers: RatingLabCardReport[];
   sevenAZeroComparison: RatingLabCardReport[];
+  sevenAZeroManualReferences: SevenAZeroManualReferenceResult[];
   anomalies: RatingLabCardReport[];
 };

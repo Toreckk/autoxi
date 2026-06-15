@@ -254,6 +254,7 @@ export type SevenAZeroManualReferenceResult = SevenAZeroManualReference & {
   actualRating: number | null;
   delta: number | null;
   matchedInternalRawName?: string;
+  matchedPublicName?: string;
   candidateNames?: readonly string[];
 };
 
@@ -298,6 +299,18 @@ export type RatingLabSummary = {
   cardsWithHighConfidenceSource: number;
   cardsWithMediumConfidenceOnly: number;
   cardsWithLowConfidenceOnly: number;
+  playersRowsRead: number;
+  squadRowsRead: number;
+  tournamentRowsRead: number;
+  teamRowsRead: number;
+  standingRowsRead: number;
+  awardRowsRead: number;
+  awardWinnerRowsRead: number;
+  hostRowsRead: number;
+  optionalAppearanceRowsRead: number;
+  optionalGoalRowsRead: number;
+  requiredSourceFilesLoaded: boolean;
+  sourceWarnings: string[];
   byWorldCupYear: Record<string, number>;
   byDecade: Record<string, number>;
   byNation: Record<string, number>;
@@ -324,6 +337,7 @@ export type RatingLabSummary = {
   sevenAZeroManualFail: number;
   sevenAZeroManualMissing: number;
   sevenAZeroManualAmbiguous: number;
+  sevenAZeroManualMatched: number;
   sevenAZeroManualAverageAbsoluteDelta: number | null;
   sevenAZeroManualMedianAbsoluteDelta: number | null;
   sevenAZeroManualDeltaP90: number | null;

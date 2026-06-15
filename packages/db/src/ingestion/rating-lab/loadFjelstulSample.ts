@@ -9,7 +9,7 @@ import {
 } from "@autoxi/domain";
 import { ICONIC_TARGET_SEARCH_TERMS } from "./iconicTargets.js";
 import type { FjelstulCardContext, TeamResult } from "./types.js";
-import { deterministicPick, deterministicUnit, normalizeName, publicSafePlaceholderName } from "./utils.js";
+import { deterministicUnit, normalizeName, publicSafePlaceholderName } from "./utils.js";
 
 export type LoadFjelstulSampleOptions = {
   sourceDir: string;
@@ -20,7 +20,38 @@ export type LoadFjelstulSampleOptions = {
   worldCupYears?: number[];
 };
 
+export type FjelstulSourceReadiness = {
+  playersRowsRead: number;
+  squadRowsRead: number;
+  tournamentRowsRead: number;
+  teamRowsRead: number;
+  standingRowsRead: number;
+  awardRowsRead: number;
+  awardWinnerRowsRead: number;
+  hostRowsRead: number;
+  optionalAppearanceRowsRead: number;
+  optionalGoalRowsRead: number;
+  requiredSourceFilesLoaded: boolean;
+  sourceWarnings: string[];
+};
+
+export type FjelstulSampleLoadResult = {
+  cards: FjelstulCardContext[];
+  sourceReadiness: FjelstulSourceReadiness;
+};
+
 type CsvRow = Record<string, string>;
+
+type AwardDefinition = {
+  id: string;
+  label: string;
+  editionKey: CardEditionKey | null;
+};
+
+type AwardWinnerIndex = {
+  awards: Map<string, CardEditionKey[]>;
+  warnings: string[];
+};
 
 const POSITION_ALIASES: Record<string, VisiblePosition> = {
   gk: "GK",
@@ -53,36 +84,92 @@ const POSITION_ALIASES: Record<string, VisiblePosition> = {
 };
 
 export async function loadFjelstulSample(options: LoadFjelstulSampleOptions): Promise<FjelstulCardContext[]> {
-  const files = await readCsvFiles(options.sourceDir);
-  const squads = pickRows(files, ["squad", "roster", "player_appearances", "appearances", "players"]);
-  const appearances = pickRows(files, ["appearance", "lineup", "player_match"]);
-  const goals = pickRows(files, ["goal", "event"]);
-  const awards = pickRows(files, ["award"]);
-  const tournaments = pickRows(files, ["tournament", "world_cup"]);
-  const results = pickRows(files, ["result", "standing", "team"]);
+  return (await loadFjelstulSampleWithReadiness(options)).cards;
+}
 
-  const appearanceIndex = aggregateNumber(appearances, ["appearances", "appearance", "match_count"], 1);
-  const minutesIndex = aggregateNumber(appearances, ["minutes", "mins"], 0);
-  const goalsIndex = aggregateNumber(goals, ["goals", "goal_count"], 1);
-  const awardIndex = aggregateAwards(awards);
-  const resultIndex = aggregateResults(results);
-  const hosts = aggregateHosts(tournaments);
+export async function loadFjelstulSampleWithReadiness(
+  options: LoadFjelstulSampleOptions
+): Promise<FjelstulSampleLoadResult> {
+  const files = await readCsvFiles(options.sourceDir);
+  const squadRows = pickFirstExisting(files, ["squads.csv", "player_squads.csv"]);
+  const playerRows = pickFirstExisting(files, ["players.csv"]);
+  const awardRows = pickFirstExisting(files, ["awards.csv"]);
+  const awardWinnerRows = pickFirstExisting(files, ["award_winners.csv"]);
+  const standingRows = pickFirstExisting(files, ["tournament_standings.csv"]);
+  const hostRows = pickFirstExisting(files, ["host_countries.csv"]);
+  const teamRows = pickFirstExisting(files, ["teams.csv"]);
+  const tournamentRows = pickFirstExisting(files, ["tournaments.csv"]);
+  const appearanceRows = pickFirstExisting(files, ["appearances.csv", "player_appearances.csv"]);
+  const goalRows = pickFirstExisting(files, ["goals.csv"]);
+
+  const sourceWarnings = new Set<string>();
+  addMissingWarnings(sourceWarnings, [
+    ["players.csv", playerRows, "players_missing"],
+    ["squads.csv", squadRows, "squads_missing"],
+    ["tournaments.csv", tournamentRows, "tournaments_missing"],
+    ["teams.csv", teamRows, "teams_missing"],
+    ["tournament_standings.csv", standingRows, "standings_missing"],
+    ["awards.csv", awardRows, "award_definitions_missing"],
+    ["award_winners.csv", awardWinnerRows, "award_winners_missing"],
+    ["host_countries.csv", hostRows, "host_countries_missing"],
+    ["appearances.csv", appearanceRows, "appearances_missing"],
+    ["goals.csv", goalRows, "goals_missing"]
+  ]);
+
+  const playersById = buildRowsById(playerRows, ["player_id", "player", "person_id", "id"]);
+  const tournamentYearById = buildTournamentYearById(tournamentRows);
+  const teamCodeById = buildTeamCodeById(teamRows);
+  const appearanceIndex = aggregateNumber({
+    rows: appearanceRows,
+    keys: ["appearances", "appearance", "match_count"],
+    fallbackIncrement: 1,
+    playersById,
+    tournamentYearById,
+    teamCodeById
+  });
+  const minutesIndex = aggregateNumber({
+    rows: appearanceRows,
+    keys: ["minutes", "mins"],
+    fallbackIncrement: 0,
+    playersById,
+    tournamentYearById,
+    teamCodeById
+  });
+  const goalsIndex = aggregateNumber({
+    rows: goalRows,
+    keys: ["goals", "goal_count"],
+    fallbackIncrement: 1,
+    playersById,
+    tournamentYearById,
+    teamCodeById
+  });
+  const awardIndex = aggregateAwardWinners({
+    awardRows,
+    awardWinnerRows,
+    playerRows,
+    tournamentRows,
+    teamRows
+  });
+  for (const warning of awardIndex.warnings) sourceWarnings.add(warning);
+  const resultIndex = aggregateResults(standingRows, tournamentYearById, teamCodeById);
+  const hosts = aggregateHosts(hostRows, tournamentYearById, teamCodeById);
 
   const seen = new Map<string, FjelstulCardContext>();
-  for (const row of squads) {
-    const internalRawName = valueFor(row, ["player_name", "given_name", "family_name", "name", "player"]) || "Unknown Player";
-    const worldCupYear = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
+  for (const row of squadRows) {
+    const playerRow = playerRowFor(row, playersById);
+    const mergedRow = { ...(playerRow ?? {}), ...row };
+    const internalRawName = playerDisplayNameFromRow(mergedRow);
+    const worldCupYear = yearForRow(mergedRow, tournamentYearById);
     if (!worldCupYear) continue;
 
-    const nation = valueFor(row, ["team_code", "team", "nation", "squad", "sel", "country"]) || "UNK";
-    const identityBase = normalizeName(valueFor(row, ["player_id", "playerId", "person_id", "id"]) || internalRawName);
-    const identityKey = `${identityBase}-${normalizeName(nation)}`;
-    const key = `${identityKey}-${worldCupYear}`;
+    const nation = nationForRow(mergedRow, teamCodeById);
+    const identityKey = identityKeyFor(mergedRow, internalRawName, nation);
+    const key = `${identityKey}:${worldCupYear}`;
     if (seen.has(key)) continue;
 
-    const position = mapFjelstulPosition(valueFor(row, ["position", "pos", "shirt_position", "positions"]));
-    const metricKey = metricKeyFor(row, internalRawName, nation, worldCupYear);
-    const rowAwards = awardIndex.get(metricKey) ?? [];
+    const position = mapFjelstulPosition(valueFor(mergedRow, ["position", "pos", "shirt_position", "positions"]));
+    const metricKey = metricKeyFor(mergedRow, internalRawName, nation, worldCupYear);
+    const rowAwards = awardIndex.awards.get(metricKey) ?? [];
     const context: FjelstulCardContext = {
       identityKey,
       internalRawName,
@@ -92,20 +179,23 @@ export async function loadFjelstulSample(options: LoadFjelstulSampleOptions): Pr
       position,
       role: roleForPosition(position),
       squadPresence: true,
-      appearances: numberFor(row, ["appearances", "matches", "caps"]) ?? appearanceIndex.get(metricKey) ?? 0,
-      minutes: numberFor(row, ["minutes", "mins"]) ?? minutesIndex.get(metricKey) ?? 0,
-      goals: numberFor(row, ["goals"]) ?? goalsIndex.get(metricKey) ?? 0,
-      captain: booleanFor(row, ["captain", "is_captain"]),
-      awards: rowAwards,
+      appearances:
+        numberFor(mergedRow, ["appearances", "matches", "caps"]) ?? appearanceIndex.get(metricKey) ?? 0,
+      minutes: numberFor(mergedRow, ["minutes", "mins"]) ?? minutesIndex.get(metricKey) ?? 0,
+      goals: numberFor(mergedRow, ["goals"]) ?? goalsIndex.get(metricKey) ?? 0,
+      captain: booleanFor(mergedRow, ["captain", "is_captain"]),
+      awards:
+        rowAwards.length > 0
+          ? rowAwards
+          : [resolveEditionKeyFromAwards({ position, awardKeys: [] })].filter(
+              (award): award is CardEditionKey => award !== "NONE"
+            ),
       teamResult: resultIndex.get(`${worldCupYear}:${normalizeName(nation)}`) ?? "UNKNOWN",
-      host: hosts.get(worldCupYear) === normalizeName(nation),
+      host: hosts.get(worldCupYear)?.has(normalizeName(nation)) ?? false,
       tournamentCount: 1,
       samePlayerEditionCount: 1,
       seed: options.seed ?? "rating-lab"
     };
-    context.awards = rowAwards.length > 0 ? rowAwards : [resolveEditionKeyFromAwards({ position, awardKeys: [] })].filter(
-      (award): award is CardEditionKey => award !== "NONE"
-    );
     seen.set(key, context);
   }
 
@@ -120,7 +210,26 @@ export async function loadFjelstulSample(options: LoadFjelstulSampleOptions): Pr
     tournamentCount: countsByIdentity.get(card.identityKey) ?? 1
   }));
 
-  return selectSample(allCards, options);
+  const requiredSourceFilesLoaded =
+    playerRows.length > 0 && squadRows.length > 0 && tournamentRows.length > 0 && teamRows.length > 0;
+
+  return {
+    cards: selectSample(allCards, options),
+    sourceReadiness: {
+      playersRowsRead: playerRows.length,
+      squadRowsRead: squadRows.length,
+      tournamentRowsRead: tournamentRows.length,
+      teamRowsRead: teamRows.length,
+      standingRowsRead: standingRows.length,
+      awardRowsRead: awardRows.length,
+      awardWinnerRowsRead: awardWinnerRows.length,
+      hostRowsRead: hostRows.length,
+      optionalAppearanceRowsRead: appearanceRows.length,
+      optionalGoalRowsRead: goalRows.length,
+      requiredSourceFilesLoaded,
+      sourceWarnings: [...sourceWarnings].sort()
+    }
+  };
 }
 
 export function mapFjelstulPosition(rawPosition?: string): VisiblePosition {
@@ -131,6 +240,22 @@ export function mapFjelstulPosition(rawPosition?: string): VisiblePosition {
     if (POSITION_ALIASES[token]) return POSITION_ALIASES[token];
   }
   return POSITION_ALIASES[normalized] ?? "CM";
+}
+
+export function playerDisplayNameFromRow(row: CsvRow): string {
+  const directName = valueFor(row, ["player_name", "name", "player"]);
+  if (directName && !looksLikeSourceId(directName)) return directName;
+
+  const given = valueFor(row, ["given_name", "given_names", "first_name"]);
+  const family = valueFor(row, ["family_name", "surname", "last_name"]);
+  const combined = [given, family].filter(Boolean).join(" ").trim();
+  return combined || directName || "Unknown Player";
+}
+
+export function identityKeyFor(row: CsvRow, fallbackName: string, nation: string): string {
+  const sourcePlayerId = valueFor(row, ["player_id", "player", "person_id"]);
+  if (sourcePlayerId) return `fjelstul:${sourcePlayerId}`;
+  return `fallback:${normalizeName(fallbackName)}:${normalizeName(nation)}`;
 }
 
 function roleForPosition(position: VisiblePosition): CardRole {
@@ -162,9 +287,7 @@ function parseCsv(text: string): CsvRow[] {
   const headers = rows.shift()?.map((header) => header.trim()) ?? [];
   return rows
     .filter((row) => row.some((cell) => cell.trim().length > 0))
-    .map((row) =>
-      Object.fromEntries(headers.map((header, index) => [header, row[index]?.trim() ?? ""]))
-    );
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]?.trim() ?? ""])));
 }
 
 function splitCsvRows(text: string): string[][] {
@@ -199,9 +322,21 @@ function splitCsvRows(text: string): string[][] {
   return rows;
 }
 
-function pickRows(files: Map<string, CsvRow[]>, needles: readonly string[]): CsvRow[] {
-  const match = [...files.entries()].find(([name]) => needles.some((needle) => name.includes(needle)));
-  return match?.[1] ?? [];
+function pickFirstExisting(files: Map<string, CsvRow[]>, names: readonly string[]): CsvRow[] {
+  for (const name of names) {
+    const rows = files.get(name);
+    if (rows) return rows;
+  }
+  return [];
+}
+
+function addMissingWarnings(
+  warnings: Set<string>,
+  sources: readonly [filename: string, rows: readonly CsvRow[], code: string][]
+): void {
+  for (const [, rows, code] of sources) {
+    if (rows.length === 0) warnings.add(code);
+  }
 }
 
 function valueFor(row: CsvRow, keys: readonly string[]): string | undefined {
@@ -225,55 +360,181 @@ function booleanFor(row: CsvRow, keys: readonly string[]): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "captain";
 }
 
+function looksLikeSourceId(value: string): boolean {
+  return /^[a-z]{0,4}\d+$/i.test(value.trim());
+}
+
+function buildRowsById(rows: readonly CsvRow[], keys: readonly string[]): Map<string, CsvRow> {
+  const byId = new Map<string, CsvRow>();
+  for (const row of rows) {
+    const id = valueFor(row, keys);
+    if (id) byId.set(normalizeName(id), row);
+  }
+  return byId;
+}
+
+function playerRowFor(row: CsvRow, playersById: ReadonlyMap<string, CsvRow>): CsvRow | undefined {
+  const playerId = valueFor(row, ["player_id", "player", "person_id"]);
+  return playerId ? playersById.get(normalizeName(playerId)) : undefined;
+}
+
+function buildTournamentYearById(rows: readonly CsvRow[]): Map<string, number> {
+  const byId = new Map<string, number>();
+  for (const row of rows) {
+    const id = valueFor(row, ["tournament_id", "id"]);
+    const year = yearForRow(row, new Map());
+    if (id && year) byId.set(normalizeName(id), year);
+  }
+  return byId;
+}
+
+function buildTeamCodeById(rows: readonly CsvRow[]): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const row of rows) {
+    const id = valueFor(row, ["team_id", "id"]);
+    const code = valueFor(row, ["team_code", "team", "nation", "country_code", "fifa_code"]);
+    if (id && code) byId.set(normalizeName(id), code);
+  }
+  return byId;
+}
+
+function yearForRow(row: CsvRow, tournamentYearById: ReadonlyMap<string, number>): number | undefined {
+  const direct = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
+  if (direct) return direct;
+  const tournamentId = valueFor(row, ["tournament_id", "tournament"]);
+  return tournamentId ? tournamentYearById.get(normalizeName(tournamentId)) : undefined;
+}
+
+function nationForRow(row: CsvRow, teamCodeById: ReadonlyMap<string, string>): string {
+  const direct = valueFor(row, ["team_code", "team", "nation", "squad", "sel", "country_code", "country"]);
+  if (direct) return direct;
+  const teamId = valueFor(row, ["team_id", "country_id"]);
+  if (teamId) return teamCodeById.get(normalizeName(teamId)) ?? "UNK";
+  return "UNK";
+}
+
 function metricKeyFor(row: CsvRow, rawName: string, nation: string, year: number): string {
-  const playerId = valueFor(row, ["player_id", "playerId", "person_id", "id"]);
+  const playerId = valueFor(row, ["player_id", "player", "person_id"]);
   return `${year}:${normalizeName(nation)}:${normalizeName(playerId || rawName)}`;
 }
 
-function aggregateNumber(rows: readonly CsvRow[], keys: readonly string[], fallbackIncrement: number): Map<string, number> {
+function aggregateNumber({
+  rows,
+  keys,
+  fallbackIncrement,
+  playersById,
+  tournamentYearById,
+  teamCodeById
+}: {
+  rows: readonly CsvRow[];
+  keys: readonly string[];
+  fallbackIncrement: number;
+  playersById: ReadonlyMap<string, CsvRow>;
+  tournamentYearById: ReadonlyMap<string, number>;
+  teamCodeById: ReadonlyMap<string, string>;
+}): Map<string, number> {
   const totals = new Map<string, number>();
   for (const row of rows) {
-    const rawName = valueFor(row, ["player_name", "name", "player"]) || "";
-    const nation = valueFor(row, ["team_code", "team", "nation", "sel", "country"]) || "UNK";
-    const year = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
-    if (!year || !rawName) continue;
-    const key = metricKeyFor(row, rawName, nation, year);
-    totals.set(key, (totals.get(key) ?? 0) + (numberFor(row, keys) ?? fallbackIncrement));
+    const playerRow = playerRowFor(row, playersById);
+    const mergedRow = { ...(playerRow ?? {}), ...row };
+    const rawName = playerDisplayNameFromRow(mergedRow);
+    const nation = nationForRow(mergedRow, teamCodeById);
+    const year = yearForRow(mergedRow, tournamentYearById);
+    if (!year || rawName === "Unknown Player") continue;
+    const key = metricKeyFor(mergedRow, rawName, nation, year);
+    totals.set(key, (totals.get(key) ?? 0) + (numberFor(mergedRow, keys) ?? fallbackIncrement));
   }
   return totals;
 }
 
-function aggregateAwards(rows: readonly CsvRow[]): Map<string, CardEditionKey[]> {
-  const awards = new Map<string, CardEditionKey[]>();
-  for (const row of rows) {
-    const rawName = valueFor(row, ["player_name", "winner", "name", "player"]) || "";
-    const nation = valueFor(row, ["team_code", "team", "nation", "sel", "country"]) || "UNK";
-    const year = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
-    if (!year || !rawName) continue;
-    const award = mapAward(valueFor(row, ["award", "award_code", "label", "type"]));
-    if (!award) continue;
-    const key = metricKeyFor(row, rawName, nation, year);
-    awards.set(key, [...(awards.get(key) ?? []), award]);
+function buildAwardDefinitionMap(awardRows: readonly CsvRow[]): Map<string, AwardDefinition> {
+  const definitions = new Map<string, AwardDefinition>();
+  for (const row of awardRows) {
+    const id = valueFor(row, ["award_id", "id", "award"]);
+    if (!id) continue;
+    const label = valueFor(row, ["award_name", "name", "award", "award_label", "type"]) ?? id;
+    definitions.set(normalizeName(id), {
+      id,
+      label,
+      editionKey: mapAward(label) ?? mapAward(id)
+    });
   }
-  return awards;
+  return definitions;
+}
+
+function aggregateAwardWinners({
+  awardRows,
+  awardWinnerRows,
+  playerRows,
+  tournamentRows,
+  teamRows
+}: {
+  awardRows: readonly CsvRow[];
+  awardWinnerRows: readonly CsvRow[];
+  playerRows: readonly CsvRow[];
+  tournamentRows: readonly CsvRow[];
+  teamRows: readonly CsvRow[];
+}): AwardWinnerIndex {
+  const warnings = new Set<string>();
+  if (awardRows.length === 0) warnings.add("award_definitions_missing");
+  if (awardWinnerRows.length === 0) warnings.add("award_winners_missing");
+
+  const definitions = buildAwardDefinitionMap(awardRows);
+  const playersById = buildRowsById(playerRows, ["player_id", "player", "person_id", "id"]);
+  const tournamentYearById = buildTournamentYearById(tournamentRows);
+  const teamCodeById = buildTeamCodeById(teamRows);
+  const awards = new Map<string, CardEditionKey[]>();
+
+  for (const row of awardWinnerRows) {
+    const awardId = valueFor(row, ["award_id", "award", "id", "type"]);
+    const definition = awardId ? definitions.get(normalizeName(awardId)) : undefined;
+    const editionKey = definition?.editionKey ?? mapAward(valueFor(row, ["award_name", "award", "type"]));
+    if (!editionKey) {
+      warnings.add("award_winner_unresolved_award");
+      continue;
+    }
+
+    const playerRow = playerRowFor(row, playersById);
+    const mergedRow = { ...(playerRow ?? {}), ...row };
+    const rawName = playerDisplayNameFromRow(mergedRow);
+    const year = yearForRow(mergedRow, tournamentYearById);
+    if (!year || rawName === "Unknown Player") {
+      warnings.add("award_winner_unresolved_player");
+      continue;
+    }
+
+    const nation = nationForRow(mergedRow, teamCodeById);
+    const key = metricKeyFor(mergedRow, rawName, nation, year);
+    awards.set(key, [...(awards.get(key) ?? []), editionKey]);
+  }
+
+  return { awards, warnings: [...warnings] };
 }
 
 function mapAward(rawAward?: string): CardEditionKey | null {
   const normalized = normalizeName(rawAward ?? "");
-  if (normalized.includes("golden ball")) return "GOLDEN_BALL";
-  if (normalized.includes("golden boot") || normalized.includes("top scorer")) return "GOLDEN_BOOT";
-  if (normalized.includes("golden glove") || normalized.includes("yashin")) return "GOLDEN_GLOVE";
+  if (normalized.includes("golden ball") || normalized === "golden_ball") return "GOLDEN_BALL";
+  if (normalized.includes("golden boot") || normalized.includes("top scorer") || normalized === "golden_boot") {
+    return "GOLDEN_BOOT";
+  }
+  if (normalized.includes("golden glove") || normalized.includes("yashin") || normalized === "golden_glove") {
+    return "GOLDEN_GLOVE";
+  }
   if (normalized.includes("young")) return "BEST_YOUNG_PLAYER";
   return null;
 }
 
-function aggregateResults(rows: readonly CsvRow[]): Map<string, TeamResult> {
+function aggregateResults(
+  rows: readonly CsvRow[],
+  tournamentYearById: ReadonlyMap<string, number>,
+  teamCodeById: ReadonlyMap<string, string>
+): Map<string, TeamResult> {
   const results = new Map<string, TeamResult>();
   for (const row of rows) {
-    const year = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
-    const nation = valueFor(row, ["team_code", "team", "nation", "sel", "country"]);
-    if (!year || !nation) continue;
-    const finalRank = numberFor(row, ["final_rank", "rank", "position"]);
+    const year = yearForRow(row, tournamentYearById);
+    const nation = nationForRow(row, teamCodeById);
+    if (!year || nation === "UNK") continue;
+    const finalRank = numberFor(row, ["final_rank", "rank", "position", "standing"]);
     const resultCode = normalizeName(valueFor(row, ["result_code", "result", "stage"]) ?? "");
     const result =
       finalRank === 1 || resultCode.includes("champion")
@@ -292,12 +553,23 @@ function aggregateResults(rows: readonly CsvRow[]): Map<string, TeamResult> {
   return results;
 }
 
-function aggregateHosts(rows: readonly CsvRow[]): Map<number, string> {
-  const hosts = new Map<number, string>();
+function aggregateHosts(
+  rows: readonly CsvRow[],
+  tournamentYearById: ReadonlyMap<string, number>,
+  teamCodeById: ReadonlyMap<string, string>
+): Map<number, Set<string>> {
+  const hosts = new Map<number, Set<string>>();
   for (const row of rows) {
-    const year = numberFor(row, ["year", "world_cup_year", "tournament_year", "copa"]);
-    const host = valueFor(row, ["host_country_code", "host", "host_name", "country"]);
-    if (year && host) hosts.set(year, normalizeName(host));
+    const year = yearForRow(row, tournamentYearById);
+    const host = nationForRow(
+      {
+        ...row,
+        team_code: valueFor(row, ["host_country_code", "host_team_code", "host", "host_name", "country"]) ?? ""
+      },
+      teamCodeById
+    );
+    if (!year || host === "UNK") continue;
+    hosts.set(year, new Set([...(hosts.get(year) ?? []), normalizeName(host)]));
   }
   return hosts;
 }
@@ -318,15 +590,20 @@ function selectSample(cards: readonly FjelstulCardContext[], options: LoadFjelst
   const iconic = filtered.filter((card) =>
     iconicTerms.some((term) => normalizeName(card.internalRawName).includes(term))
   );
-  const randomPool = filtered.filter((card) => !iconic.includes(card));
+  const iconicKeys = new Set(iconic.map((card) => `${card.identityKey}:${card.worldCupYear}`));
+  const randomPool = filtered.filter((card) => !iconicKeys.has(`${card.identityKey}:${card.worldCupYear}`));
   const randomCount = options.randomCount ?? 100;
   const seed = options.seed ?? "rating-lab";
   const random = [...randomPool]
-    .sort((left, right) => deterministicUnit(`${seed}:${left.identityKey}:${left.worldCupYear}`) - deterministicUnit(`${seed}:${right.identityKey}:${right.worldCupYear}`))
+    .sort((left, right) => deterministicSortScore(seed, left) - deterministicSortScore(seed, right))
     .slice(0, randomCount);
 
   if (options.sample === "random") return random;
-  return [...iconic, ...random].sort((left, right) =>
-    deterministicPick([-1, 1] as const, `${seed}:order:${left.identityKey}:${right.identityKey}`)
+  return [...iconic, ...random].sort(
+    (left, right) => deterministicSortScore(`${seed}:combined`, left) - deterministicSortScore(`${seed}:combined`, right)
   );
+}
+
+function deterministicSortScore(seed: string | number, card: FjelstulCardContext): number {
+  return deterministicUnit(`${seed}:order:${card.identityKey}:${card.worldCupYear}`);
 }

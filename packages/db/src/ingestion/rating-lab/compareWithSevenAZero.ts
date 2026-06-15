@@ -8,24 +8,49 @@ import type {
 } from "./types.js";
 import { normalizeName } from "./utils.js";
 
+export type SevenAZeroLocalJsonWarning = {
+  code: "seven_a_zero_rating_field_unknown" | "seven_a_zero_rating_out_of_range";
+  file: string;
+  playerName?: string;
+};
+
+export type SevenAZeroLocalJsonLoadResult = {
+  comparisons: SevenAZeroComparison[];
+  warnings: SevenAZeroLocalJsonWarning[];
+};
+
 export function isValidOverallRating(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 40 && value <= 100;
 }
 
 export async function loadSevenAZeroLocalJsonComparisons(sourceDir?: string): Promise<SevenAZeroComparison[]> {
-  if (!sourceDir) return [];
+  return (await loadSevenAZeroLocalJsonComparisonsWithWarnings(sourceDir)).comparisons;
+}
+
+export async function loadSevenAZeroLocalJsonComparisonsWithWarnings(
+  sourceDir?: string
+): Promise<SevenAZeroLocalJsonLoadResult> {
+  if (!sourceDir) return { comparisons: [], warnings: [] };
   let entries;
   try {
     entries = await readdir(sourceDir, { withFileTypes: true });
   } catch {
-    return [];
+    return { comparisons: [], warnings: [] };
   }
 
   const comparisons: SevenAZeroComparison[] = [];
+  const warnings: SevenAZeroLocalJsonWarning[] = [];
   for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json"))) {
     const parsed = JSON.parse(await readFile(join(sourceDir, entry.name), "utf8")) as SevenAZeroSquadFile;
     for (const player of parsed.squad ?? []) {
-      if (!isValidOverallRating(player.f)) continue;
+      if (!isValidOverallRating(player.f)) {
+        warnings.push({
+          code: typeof player.f === "number" ? "seven_a_zero_rating_out_of_range" : "seven_a_zero_rating_field_unknown",
+          file: entry.name,
+          playerName: player.name
+        });
+        continue;
+      }
       comparisons.push({
         normalizedName: normalizeName(player.name),
         internalName: player.name,
@@ -35,7 +60,7 @@ export async function loadSevenAZeroLocalJsonComparisons(sourceDir?: string): Pr
       });
     }
   }
-  return comparisons;
+  return { comparisons, warnings };
 }
 
 export function findSevenAZeroComparison(

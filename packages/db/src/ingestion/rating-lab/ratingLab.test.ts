@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -19,10 +19,10 @@ import { evaluateRatingGates } from "./evaluateRatingGates.js";
 import { generateOverallFromFjelstulContext } from "./generateOverallFromFjelstulContext.js";
 import { generateStatsFromOverall } from "./generateStatsFromOverall.js";
 import { MANUAL_RATING_FLOORS } from "./iconicTargets.js";
-import { loadFjelstulSample, mapFjelstulPosition } from "./loadFjelstulSample.js";
+import { loadFjelstulSample, loadFjelstulSampleWithReadiness, mapFjelstulPosition } from "./loadFjelstulSample.js";
 import { detectAnomalyDetails } from "./anomalyDetection.js";
 import { evaluatePairwiseCheck } from "./pairwiseChecks.js";
-import { detectAnomalies, toCardReport } from "./reportWriter.js";
+import { buildReports, detectAnomalies, toCardReport, writeRatingLabReports } from "./reportWriter.js";
 import { resolveCardRating } from "./resolveCardRating.js";
 import { resolveRatingLabPresetOptions } from "./runRatingLab.js";
 import {
@@ -41,27 +41,75 @@ import type {
 import { publicSafePlaceholderName } from "./utils.js";
 
 describe("rating lab spike", () => {
-  it("loads a tiny Fjelstul CSV sample and maps positions", async () => {
+  it("loads realistic Fjelstul-like CSV files with exact filename priority", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rating-lab-"));
-    await writeFile(
-      join(dir, "squads.csv"),
-      [
-        "player_id,player_name,year,team_code,position,appearances,minutes,goals,captain",
-        "p1,Diego Maradona,1986,ARG,CAM,7,630,5,true",
-        "p2,Backup Keeper,1986,ARG,GK,0,0,0,false"
-      ].join("\n"),
-      "utf8"
-    );
-    await writeFile(join(dir, "team_results.csv"), "year,team_code,final_rank\n1986,ARG,1\n", "utf8");
-    await writeFile(join(dir, "awards.csv"), "player_id,player_name,year,team_code,award\np1,Diego Maradona,1986,ARG,Golden Ball\n", "utf8");
+    await writeFixtureCsv(dir, "players.csv", [
+      "player_id,given_name,family_name",
+      "p1,Diego,Maradona",
+      "p2,Backup,Keeper"
+    ]);
+    await writeFixtureCsv(dir, "squads.csv", [
+      "player_id,tournament_id,team_id,position,appearances,minutes,goals,captain",
+      "p1,wc1986,arg,CAM,7,630,5,true",
+      "p2,wc1986,arg,GK,0,0,0,false"
+    ]);
+    await writeFixtureCsv(dir, "players_extra_awards.csv", ["player_id,player_name,year,team_code,award", "wrong,Wrong Pick,1986,ARG,Golden Boot"]);
+    await writeFixtureCsv(dir, "tournaments.csv", ["tournament_id,year", "wc1986,1986"]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code", "arg,ARG"]);
+    await writeFixtureCsv(dir, "tournament_standings.csv", ["tournament_id,team_id,position", "wc1986,arg,1"]);
+    await writeFixtureCsv(dir, "host_countries.csv", ["tournament_id,team_id", "wc1986,arg"]);
+    await writeFixtureCsv(dir, "awards.csv", ["award_id,award_name", "golden_ball,Golden Ball"]);
+    await writeFixtureCsv(dir, "award_winners.csv", ["tournament_id,award_id,player_id,team_id", "wc1986,golden_ball,p1,arg"]);
+
+    const { cards, sourceReadiness } = await loadFjelstulSampleWithReadiness({ sourceDir: dir, sample: "all", seed: "test" });
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({
+      identityKey: "fjelstul:p1",
+      internalRawName: "Diego Maradona",
+      position: "CAM",
+      teamResult: "CHAMPION",
+      host: true
+    });
+    expect(cards[0]?.awards).toContain("GOLDEN_BALL");
+    expect(sourceReadiness).toMatchObject({
+      playersRowsRead: 2,
+      squadRowsRead: 2,
+      tournamentRowsRead: 1,
+      teamRowsRead: 1,
+      standingRowsRead: 1,
+      awardRowsRead: 1,
+      awardWinnerRowsRead: 1,
+      hostRowsRead: 1,
+      requiredSourceFilesLoaded: true
+    });
+    expect(sourceReadiness.sourceWarnings).toEqual(expect.arrayContaining(["appearances_missing", "goals_missing"]));
+    expect(sourceReadiness.requiredSourceFilesLoaded).toBe(true);
+    expect(mapFjelstulPosition("PD")).toBe("RW");
+    expect(mapFjelstulPosition("Goalkeeper")).toBe("GK");
+  });
+
+  it("uses fallback name and nation identity only when no player_id exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-fallback-"));
+    await writeFixtureCsv(dir, "players.csv", ["player_id,given_name,family_name", "unused,Unused,Player"]);
+    await writeFixtureCsv(dir, "squads.csv", ["player_name,year,team_code,position", "Solo Fallback,1994,BRA,ST"]);
+    await writeFixtureCsv(dir, "tournaments.csv", ["tournament_id,year", "wc1994,1994"]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code", "bra,BRA"]);
 
     const cards = await loadFjelstulSample({ sourceDir: dir, sample: "all", seed: "test" });
 
-    expect(cards).toHaveLength(2);
-    expect(cards[0]).toMatchObject({ internalRawName: "Diego Maradona", position: "CAM", teamResult: "CHAMPION" });
-    expect(cards[0]?.awards).toContain("GOLDEN_BALL");
-    expect(mapFjelstulPosition("PD")).toBe("RW");
-    expect(mapFjelstulPosition("Goalkeeper")).toBe("GK");
+    expect(cards[0]?.identityKey).toBe("fallback:solo fallback:bra");
+  });
+
+  it("marks missing required source files as readiness failures without failing optional files", async () => {
+    const emptyDir = await mkdtemp(join(tmpdir(), "rating-lab-empty-"));
+    const missing = await loadFjelstulSampleWithReadiness({ sourceDir: emptyDir, sample: "all", seed: "test" });
+
+    expect(missing.cards).toHaveLength(0);
+    expect(missing.sourceReadiness.requiredSourceFilesLoaded).toBe(false);
+    expect(missing.sourceReadiness.sourceWarnings).toEqual(
+      expect.arrayContaining(["players_missing", "squads_missing", "tournaments_missing", "teams_missing"])
+    );
   });
 
   it("generates deterministic overall ratings with award floors, team result, goals, and clamps", () => {
@@ -131,6 +179,38 @@ describe("rating lab spike", () => {
 
     expect(resolved.primarySource).toBe("EA_HISTORICAL");
     expect(resolved.warnings.map((warning) => warning.code)).toContain("overall_stat_delta_gt_4");
+  });
+
+  it("does not use low-confidence EA stats when a manual floor supplies the visible overall", () => {
+    const resolved = resolveCardRating(
+      cardContext({ internalRawName: "Ronaldo Nazario", nation: "BRA", worldCupYear: 2002, appearances: 1, minutes: 90 }),
+      {
+        manualCurated: MANUAL_RATING_FLOORS,
+        eaHistorical: [
+          {
+            normalizedName: "ronaldo nazario",
+            nation: "BRA",
+            worldCupYear: 2002,
+            overall: 78,
+            confidence: "LOW",
+            reason: "low-confidence fixture",
+            stats: {
+              profile: "OUTFIELD",
+              pace: 55,
+              shooting: 55,
+              passing: 55,
+              dribbling: 55,
+              defending: 55,
+              physical: 55
+            }
+          }
+        ]
+      }
+    );
+
+    expect(resolved.primarySource).toBe("MANUAL_CURATED");
+    expect(resolved.overall).toBeGreaterThanOrEqual(95);
+    expect(resolved.overallStatDelta).toBeLessThanOrEqual(4);
   });
 
   it("parses and matches local 7a0 JSON without applying it by default", async () => {
@@ -285,6 +365,25 @@ describe("rating lab spike", () => {
     ]);
 
     expect(results.some((result) => result.id === "7a0-bra-1974-rivelino" && result.status === "PASS")).toBe(true);
+  });
+
+  it("writes a dedicated manual 7a0 reference CSV report", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-reports-"));
+    const reports = buildReports({
+      cards: [report({ internalRawName: "Rivelino", nation: "BRA", worldCupYear: 1974, overall: 92 })],
+      sourceDir: "fixture",
+      sampleMode: "all",
+      seed: "test",
+      sourceReadiness: sourceReadinessFixture()
+    });
+
+    const paths = await writeRatingLabReports({ reports, outputDir, timestamp: "fixture" });
+    const manualReportPath = paths.find((path) => path.endsWith("rating-lab-seven-a-zero-manual-references-fixture.csv"));
+    expect(manualReportPath).toBeDefined();
+    expect(reports.summary.sevenAZeroManualMatched).toBeGreaterThan(0);
+    expect(await readFile(manualReportPath!, "utf8")).toContain(
+      "referenceId,playerName,aliases,worldCupYear,nationCode,referenceOverall,actualRating,delta,status,matchedInternalRawName,matchedPublicName,candidateNames,tolerance,reason"
+    );
   });
 
   it("applies manual floors only to matching nation and year", () => {
@@ -582,6 +681,23 @@ function benchmarkResult(overrides: Partial<BenchmarkResult> = {}): BenchmarkRes
   };
 }
 
+function sourceReadinessFixture() {
+  return {
+    playersRowsRead: 1,
+    squadRowsRead: 1,
+    tournamentRowsRead: 1,
+    teamRowsRead: 1,
+    standingRowsRead: 1,
+    awardRowsRead: 1,
+    awardWinnerRowsRead: 1,
+    hostRowsRead: 1,
+    optionalAppearanceRowsRead: 0,
+    optionalGoalRowsRead: 0,
+    requiredSourceFilesLoaded: true,
+    sourceWarnings: []
+  };
+}
+
 function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSummary {
   const snapshot = {
     key: "Test Player:1986:ARG",
@@ -615,6 +731,7 @@ function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSum
     cardsWithHighConfidenceSource: 0,
     cardsWithMediumConfidenceOnly: 1,
     cardsWithLowConfidenceOnly: 0,
+    ...sourceReadinessFixture(),
     byWorldCupYear: { "1986": 1 },
     byDecade: { "1980s": 1 },
     byNation: { ARG: 1 },
@@ -634,13 +751,14 @@ function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSum
     pairwiseAmbiguous: 0,
     generatedOnlyTop3PerTournament: 0,
     overallStatDeltaP90: 0,
-    awardWinnerFloorPct: null,
+    awardWinnerFloorPct: 100,
     sevenAZeroComparison: null,
     sevenAZeroManualPass: 0,
     sevenAZeroManualWarn: 0,
     sevenAZeroManualFail: 0,
     sevenAZeroManualMissing: 0,
     sevenAZeroManualAmbiguous: 0,
+    sevenAZeroManualMatched: 0,
     sevenAZeroManualAverageAbsoluteDelta: null,
     sevenAZeroManualMedianAbsoluteDelta: null,
     sevenAZeroManualDeltaP90: null,
@@ -648,4 +766,8 @@ function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSum
     confidenceGateReasons: [],
     ...overrides
   };
+}
+
+async function writeFixtureCsv(dir: string, filename: string, lines: readonly string[]): Promise<void> {
+  await writeFile(join(dir, filename), `${lines.join("\n")}\n`, "utf8");
 }

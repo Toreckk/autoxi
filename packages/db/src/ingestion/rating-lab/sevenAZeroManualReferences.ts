@@ -118,6 +118,7 @@ export function evaluateSevenAZeroReference(
     actualRating: best.overall,
     delta,
     matchedInternalRawName: best.internalRawName,
+    matchedPublicName: best.publicPlaceholderName,
     candidateNames: candidates.map((candidate) => candidate.internalRawName)
   };
 }

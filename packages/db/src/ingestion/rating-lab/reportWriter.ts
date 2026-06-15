@@ -6,6 +6,7 @@ import { summarizeSevenAZeroComparison } from "./compareWithSevenAZero.js";
 import { evaluateRatingGates } from "./evaluateRatingGates.js";
 import { evaluatePairwiseChecks } from "./pairwiseChecks.js";
 import { evaluateSevenAZeroManualReferences } from "./sevenAZeroManualReferences.js";
+import type { FjelstulSourceReadiness } from "./loadFjelstulSample.js";
 import type { RatingLabReports } from "./reportTypes.js";
 import type {
   FjelstulCardContext,
@@ -103,16 +104,28 @@ export function buildReports({
   cards,
   sourceDir,
   sampleMode,
-  seed
+  seed,
+  sourceReadiness
 }: {
   cards: readonly RatingLabCardReport[];
   sourceDir: string;
   sampleMode: string;
   seed: string;
+  sourceReadiness?: FjelstulSourceReadiness;
 }): RatingLabReports {
   const anomalyDetails = detectAnomalyDetails(cards);
   const anomalies = detectAnomalies(cards);
-  const summary = buildSummary({ cards, anomalies, anomalyDetails, sourceDir, sampleMode, seed });
+  const sevenAZeroManualReferences = evaluateSevenAZeroManualReferences(cards);
+  const summary = buildSummary({
+    cards,
+    anomalies,
+    anomalyDetails,
+    sourceDir,
+    sampleMode,
+    seed,
+    sourceReadiness,
+    sevenAZeroManualReferences
+  });
   const icons = cards.filter((card) => card.tier === "ICON" || card.primarySource === "MANUAL_CURATED");
   const topByTournament = Object.values(groupBy(cards, (card) => String(card.worldCupYear))).flatMap((yearCards) =>
     [...yearCards].sort((left, right) => right.overall - left.overall).slice(0, 25)
@@ -133,6 +146,7 @@ export function buildReports({
     awardWinners,
     generatedOnlyOutliers,
     sevenAZeroComparison,
+    sevenAZeroManualReferences,
     anomalies
   };
 }
@@ -156,6 +170,7 @@ export async function writeRatingLabReports({
     [`rating-lab-award-winners-${timestamp}.csv`, toCsv(reports.awardWinners)],
     [`rating-lab-generated-only-outliers-${timestamp}.csv`, toCsv(reports.generatedOnlyOutliers)],
     [`rating-lab-seven-a-zero-comparison-${timestamp}.csv`, toCsv(reports.sevenAZeroComparison)],
+    [`rating-lab-seven-a-zero-manual-references-${timestamp}.csv`, manualReferencesToCsv(reports.sevenAZeroManualReferences)],
     [`rating-lab-anomalies-${timestamp}.csv`, toCsv(reports.anomalies)]
   ] as const;
 
@@ -174,7 +189,9 @@ function buildSummary({
   anomalyDetails,
   sourceDir,
   sampleMode,
-  seed
+  seed,
+  sourceReadiness,
+  sevenAZeroManualReferences
 }: {
   cards: readonly RatingLabCardReport[];
   anomalies: readonly RatingLabCardReport[];
@@ -182,6 +199,8 @@ function buildSummary({
   sourceDir: string;
   sampleMode: string;
   seed: string;
+  sourceReadiness?: FjelstulSourceReadiness;
+  sevenAZeroManualReferences: readonly SevenAZeroManualReferenceResult[];
 }): RatingLabSummary {
   const warningsByCode = countWarnings([...cards, ...anomalies]);
   const confidenceGateReasons: string[] = [];
@@ -192,7 +211,7 @@ function buildSummary({
   }
 
   const benchmarks = evaluateBenchmarks(cards);
-  const sevenAZeroReferenceSummary = summarizeManualReferences(evaluateSevenAZeroManualReferences(cards));
+  const sevenAZeroReferenceSummary = summarizeManualReferences(sevenAZeroManualReferences);
   const pairwiseChecks = evaluatePairwiseChecks(cards);
   const overallStatDeltas = cards.map((card) => card.overallStatDelta).sort((left, right) => left - right);
   const awardWinners = cards.filter((card) => card.awards.length > 0 || card.editionKey !== "NONE");
@@ -223,6 +242,18 @@ function buildSummary({
     cardsWithHighConfidenceSource: cards.filter((card) => card.confidence === "HIGH").length,
     cardsWithMediumConfidenceOnly: cards.filter((card) => card.confidence === "MEDIUM").length,
     cardsWithLowConfidenceOnly: cards.filter((card) => card.confidence === "LOW").length,
+    playersRowsRead: sourceReadiness?.playersRowsRead ?? 0,
+    squadRowsRead: sourceReadiness?.squadRowsRead ?? 0,
+    tournamentRowsRead: sourceReadiness?.tournamentRowsRead ?? 0,
+    teamRowsRead: sourceReadiness?.teamRowsRead ?? 0,
+    standingRowsRead: sourceReadiness?.standingRowsRead ?? 0,
+    awardRowsRead: sourceReadiness?.awardRowsRead ?? 0,
+    awardWinnerRowsRead: sourceReadiness?.awardWinnerRowsRead ?? 0,
+    hostRowsRead: sourceReadiness?.hostRowsRead ?? 0,
+    optionalAppearanceRowsRead: sourceReadiness?.optionalAppearanceRowsRead ?? 0,
+    optionalGoalRowsRead: sourceReadiness?.optionalGoalRowsRead ?? 0,
+    requiredSourceFilesLoaded: sourceReadiness?.requiredSourceFilesLoaded ?? false,
+    sourceWarnings: sourceReadiness?.sourceWarnings ?? [],
     byWorldCupYear: countBy(cards, (card) => card.worldCupYear),
     byDecade: countBy(cards, (card) => `${Math.floor(card.worldCupYear / 10) * 10}s`),
     byNation: countBy(cards, (card) => card.nation),
@@ -260,6 +291,50 @@ function toCsv(rows: readonly RatingLabCardReport[]): string {
   const lines = [CSV_COLUMNS.join(",")];
   for (const row of rows) {
     lines.push(CSV_COLUMNS.map((column) => csvCell(row[column])).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+const MANUAL_REFERENCE_COLUMNS = [
+  "referenceId",
+  "playerName",
+  "aliases",
+  "worldCupYear",
+  "nationCode",
+  "referenceOverall",
+  "actualRating",
+  "delta",
+  "status",
+  "matchedInternalRawName",
+  "matchedPublicName",
+  "candidateNames",
+  "tolerance",
+  "reason"
+] as const;
+
+function manualReferencesToCsv(rows: readonly SevenAZeroManualReferenceResult[]): string {
+  const lines = [MANUAL_REFERENCE_COLUMNS.join(",")];
+  for (const row of rows) {
+    lines.push(
+      [
+        row.id,
+        row.playerName,
+        (row.aliases ?? []).join("|"),
+        row.worldCupYear,
+        row.nationCode,
+        row.referenceOverall,
+        row.actualRating,
+        row.delta,
+        row.status,
+        row.matchedInternalRawName ?? "",
+        row.matchedPublicName ?? "",
+        (row.candidateNames ?? []).join("|"),
+        row.tolerance,
+        row.reason
+      ]
+        .map(csvCell)
+        .join(",")
+    );
   }
   return `${lines.join("\n")}\n`;
 }
@@ -313,6 +388,7 @@ function summarizeManualReferences(results: readonly SevenAZeroManualReferenceRe
   | "sevenAZeroManualFail"
   | "sevenAZeroManualMissing"
   | "sevenAZeroManualAmbiguous"
+  | "sevenAZeroManualMatched"
   | "sevenAZeroManualAverageAbsoluteDelta"
   | "sevenAZeroManualMedianAbsoluteDelta"
   | "sevenAZeroManualDeltaP90"
@@ -329,6 +405,7 @@ function summarizeManualReferences(results: readonly SevenAZeroManualReferenceRe
     sevenAZeroManualFail: results.filter((result) => result.status === "FAIL").length,
     sevenAZeroManualMissing: results.filter((result) => result.status === "MISSING").length,
     sevenAZeroManualAmbiguous: results.filter((result) => result.status === "AMBIGUOUS").length,
+    sevenAZeroManualMatched: results.filter((result) => result.actualRating !== null).length,
     sevenAZeroManualAverageAbsoluteDelta: average(deltas),
     sevenAZeroManualMedianAbsoluteDelta: percentile(deltas, 0.5),
     sevenAZeroManualDeltaP90: percentile(deltas, 0.9)

@@ -33,6 +33,16 @@ export function evaluateRatingGates(
   const unknownHighRating = summary.warningsByCode.unknown_high_rating ?? 0;
 
   const results: RatingGateResult[] = [
+    hard(
+      "required_source_files_loaded",
+      String(summary.requiredSourceFilesLoaded),
+      "true",
+      summary.requiredSourceFilesLoaded
+    ),
+    hard("players_rows_read", summary.playersRowsRead, "> 0", summary.playersRowsRead > 0),
+    hard("squad_rows_read", summary.squadRowsRead, "> 0", summary.squadRowsRead > 0),
+    hard("tournament_rows_read", summary.tournamentRowsRead, "> 0", summary.tournamentRowsRead > 0),
+    hard("team_rows_read", summary.teamRowsRead, "> 0", summary.teamRowsRead > 0),
     hard("cards_resolved_pct", cardsResolvedPct, gates.minCardsResolvedPct, cardsResolvedPct >= gates.minCardsResolvedPct),
     hard("benchmark_fails", benchmarkFails, `<= ${gates.maxBenchmarkFails}`, benchmarkFails <= gates.maxBenchmarkFails),
     hard(
@@ -50,6 +60,16 @@ export function evaluateRatingGates(
     ),
     hard("hard_anomalies", hardAnomalies, `<= ${gates.maxHardFailures}`, hardAnomalies <= gates.maxHardFailures),
     warn("benchmark_warns", benchmarkWarns, `<= ${gates.maxBenchmarkWarns}`, benchmarkWarns <= gates.maxBenchmarkWarns),
+    warn("standing_rows_read", summary.standingRowsRead, "> 0", summary.standingRowsRead > 0),
+    warn("award_rows_read", summary.awardRowsRead, "> 0", summary.awardRowsRead > 0),
+    warn("award_winner_rows_read", summary.awardWinnerRowsRead, "> 0", summary.awardWinnerRowsRead > 0),
+    warn("host_rows_read", summary.hostRowsRead, "> 0", summary.hostRowsRead > 0),
+    warn(
+      "award_winner_floor_pct_unavailable",
+      summary.awardWinnerFloorPct,
+      "available",
+      summary.awardWinnerFloorPct !== null
+    ),
     warn(
       "seven_a_zero_manual_average_delta",
       summary.sevenAZeroManualAverageAbsoluteDelta,
@@ -72,7 +92,7 @@ export function evaluateRatingGates(
     warn("pairwise_failures", summary.pairwiseFail, "0", summary.pairwiseFail === 0)
   ];
 
-  if (summary.totalCardsSampled === 0 || cardsResolvedPct < 50) {
+  if (!summary.requiredSourceFilesLoaded || summary.totalCardsSampled === 0 || cardsResolvedPct < 50) {
     return finish("BLOCKED_BY_SOURCE_QUALITY", results);
   }
 
