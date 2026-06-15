@@ -2,7 +2,14 @@ import { deriveTier } from "@autoxi/domain";
 import type { RatingLabAnomaly, RatingLabCardReport } from "./types.js";
 import { normalizeName } from "./utils.js";
 
-export function detectAnomalyDetails(cards: readonly RatingLabCardReport[]): RatingLabAnomaly[] {
+export type RatingLabAnomalyOptions = {
+  sampleMode?: string;
+};
+
+export function detectAnomalyDetails(
+  cards: readonly RatingLabCardReport[],
+  options: RatingLabAnomalyOptions = {}
+): RatingLabAnomaly[] {
   const anomalies: RatingLabAnomaly[] = [];
   const byTournament = groupBy(cards, (card) => String(card.worldCupYear));
   const byTournamentTeam = groupBy(cards, (card) => `${card.worldCupYear}:${normalizeName(card.nation)}`);
@@ -26,7 +33,13 @@ export function detectAnomalyDetails(cards: readonly RatingLabCardReport[]): Rat
   for (const tournamentCards of Object.values(byTournament)) {
     const topThree = [...tournamentCards].sort((left, right) => right.overall - left.overall).slice(0, 3);
     for (const card of topThree.filter((candidate) => candidate.primarySource === "FJELSTUL_GENERATED")) {
-      anomalies.push(anomaly(card, "generated_only_top3_tournament", "HARD_FAIL", "Generated-only player appears in tournament top 3."));
+      const severity = hasSufficientTournamentCoverage({
+        tournamentSampleSize: tournamentCards.length,
+        sampleMode: options.sampleMode
+      })
+        ? "HARD_FAIL"
+        : "WARNING";
+      anomalies.push(anomaly(card, "generated_only_top3_tournament", severity, "Generated-only player appears in tournament top 3."));
     }
     const heroIconCount = tournamentCards.filter((card) => card.tier === "HERO" || card.tier === "ICON").length;
     if (heroIconCount > 8) {
@@ -63,8 +76,11 @@ export function detectAnomalyDetails(cards: readonly RatingLabCardReport[]): Rat
   return dedupeAnomalies(anomalies);
 }
 
-export function detectAnomalies(cards: readonly RatingLabCardReport[]): RatingLabCardReport[] {
-  const details = detectAnomalyDetails(cards);
+export function detectAnomalies(
+  cards: readonly RatingLabCardReport[],
+  options: RatingLabAnomalyOptions = {}
+): RatingLabCardReport[] {
+  const details = detectAnomalyDetails(cards, options);
   const byCard = new Map<string, RatingLabCardReport>();
   for (const detail of details) {
     const card = cards.find(
@@ -80,6 +96,17 @@ export function detectAnomalies(cards: readonly RatingLabCardReport[]): RatingLa
     byCard.set(cardKey(card), { ...card, warnings: [...warnings].join("|"), tier: deriveTier(card.overall) });
   }
   return [...byCard.values()].sort((left, right) => right.overall - left.overall);
+}
+
+export function hasSufficientTournamentCoverage({
+  tournamentSampleSize,
+  sampleMode
+}: {
+  tournamentSampleSize: number;
+  expectedTournamentSquadSize?: number;
+  sampleMode?: string;
+}): boolean {
+  return sampleMode === "all" || tournamentSampleSize >= 100;
 }
 
 function anomaly(

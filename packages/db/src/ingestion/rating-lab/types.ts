@@ -158,6 +158,7 @@ export type RatingLabCardReport = {
   tier: CardTier;
   editionKey: CardEditionKey;
   primarySource: RatingSource;
+  sourceTypes: string;
   confidence: Confidence;
   teamResult: TeamResult;
   awards: string;

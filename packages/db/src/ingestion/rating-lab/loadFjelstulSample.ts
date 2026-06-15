@@ -53,6 +53,8 @@ type AwardWinnerIndex = {
   warnings: string[];
 };
 
+type PlayerTournamentNationIndex = Map<string, string>;
+
 const POSITION_ALIASES: Record<string, VisiblePosition> = {
   gk: "GK",
   goalkeeper: "GK",
@@ -119,13 +121,20 @@ export async function loadFjelstulSampleWithReadiness(
   const playersById = buildRowsById(playerRows, ["player_id", "player", "person_id", "id"]);
   const tournamentYearById = buildTournamentYearById(tournamentRows);
   const teamCodeById = buildTeamCodeById(teamRows);
+  const playerTournamentNationIndex = buildPlayerTournamentNationIndex({
+    squadRows,
+    tournamentYearById,
+    teamCodeById
+  });
   const appearanceIndex = aggregateNumber({
     rows: appearanceRows,
     keys: ["appearances", "appearance", "match_count"],
     fallbackIncrement: 1,
     playersById,
     tournamentYearById,
-    teamCodeById
+    teamCodeById,
+    playerTournamentNationIndex,
+    warnings: sourceWarnings
   });
   const minutesIndex = aggregateNumber({
     rows: appearanceRows,
@@ -133,7 +142,9 @@ export async function loadFjelstulSampleWithReadiness(
     fallbackIncrement: 0,
     playersById,
     tournamentYearById,
-    teamCodeById
+    teamCodeById,
+    playerTournamentNationIndex,
+    warnings: sourceWarnings
   });
   const goalsIndex = aggregateNumber({
     rows: goalRows,
@@ -141,14 +152,17 @@ export async function loadFjelstulSampleWithReadiness(
     fallbackIncrement: 1,
     playersById,
     tournamentYearById,
-    teamCodeById
+    teamCodeById,
+    playerTournamentNationIndex,
+    warnings: sourceWarnings
   });
   const awardIndex = aggregateAwardWinners({
     awardRows,
     awardWinnerRows,
     playerRows,
     tournamentRows,
-    teamRows
+    teamRows,
+    playerTournamentNationIndex
   });
   for (const warning of awardIndex.warnings) sourceWarnings.add(warning);
   const resultIndex = aggregateResults(standingRows, tournamentYearById, teamCodeById);
@@ -243,13 +257,13 @@ export function mapFjelstulPosition(rawPosition?: string): VisiblePosition {
 }
 
 export function playerDisplayNameFromRow(row: CsvRow): string {
-  const directName = valueFor(row, ["player_name", "name", "player"]);
-  if (directName && !looksLikeSourceId(directName)) return directName;
+  const directName = valueFor(row, ["player_name", "name", "full_name", "known_as"]);
+  if (directName) return directName;
 
   const given = valueFor(row, ["given_name", "given_names", "first_name"]);
   const family = valueFor(row, ["family_name", "surname", "last_name"]);
   const combined = [given, family].filter(Boolean).join(" ").trim();
-  return combined || directName || "Unknown Player";
+  return combined || "Unknown Player";
 }
 
 export function identityKeyFor(row: CsvRow, fallbackName: string, nation: string): string {
@@ -360,10 +374,6 @@ function booleanFor(row: CsvRow, keys: readonly string[]): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "captain";
 }
 
-function looksLikeSourceId(value: string): boolean {
-  return /^[a-z]{0,4}\d+$/i.test(value.trim());
-}
-
 function buildRowsById(rows: readonly CsvRow[], keys: readonly string[]): Map<string, CsvRow> {
   const byId = new Map<string, CsvRow>();
   for (const row of rows) {
@@ -393,7 +403,10 @@ function buildTeamCodeById(rows: readonly CsvRow[]): Map<string, string> {
   for (const row of rows) {
     const id = valueFor(row, ["team_id", "id"]);
     const code = valueFor(row, ["team_code", "team", "nation", "country_code", "fifa_code"]);
-    if (id && code) byId.set(normalizeName(id), code);
+    if (id && code) {
+      byId.set(normalizeName(id), code);
+      byId.set(normalizeName(code), code);
+    }
   }
   return byId;
 }
@@ -406,10 +419,68 @@ function yearForRow(row: CsvRow, tournamentYearById: ReadonlyMap<string, number>
 }
 
 function nationForRow(row: CsvRow, teamCodeById: ReadonlyMap<string, string>): string {
-  const direct = valueFor(row, ["team_code", "team", "nation", "squad", "sel", "country_code", "country"]);
-  if (direct) return direct;
   const teamId = valueFor(row, ["team_id", "country_id"]);
-  if (teamId) return teamCodeById.get(normalizeName(teamId)) ?? "UNK";
+  if (teamId) return teamCodeById.get(normalizeName(teamId)) ?? teamId;
+
+  const directCode = valueFor(row, ["team_code", "nation", "squad", "sel", "country_code", "fifa_code"]);
+  if (directCode) return directCode;
+
+  const team = valueFor(row, ["team"]);
+  if (team) return teamCodeById.get(normalizeName(team)) ?? team;
+
+  const country = valueFor(row, ["country"]);
+  if (country) return teamCodeById.get(normalizeName(country)) ?? country;
+
+  return "UNK";
+}
+
+function buildPlayerTournamentNationIndex({
+  squadRows,
+  tournamentYearById,
+  teamCodeById
+}: {
+  squadRows: readonly CsvRow[];
+  tournamentYearById: ReadonlyMap<string, number>;
+  teamCodeById: ReadonlyMap<string, string>;
+}): PlayerTournamentNationIndex {
+  const index: PlayerTournamentNationIndex = new Map();
+  for (const row of squadRows) {
+    const playerId = valueFor(row, ["player_id", "player", "person_id"]);
+    const year = yearForRow(row, tournamentYearById);
+    if (!playerId || !year) continue;
+    const nation = nationForRow(row, teamCodeById);
+    if (nation !== "UNK") index.set(playerTournamentNationKey(year, playerId), nation);
+  }
+  return index;
+}
+
+function playerTournamentNationKey(year: number, playerId: string): string {
+  return `${year}:${normalizeName(playerId)}`;
+}
+
+function nationForMetricRow({
+  row,
+  year,
+  teamCodeById,
+  playerTournamentNationIndex,
+  warnings
+}: {
+  row: CsvRow;
+  year: number;
+  teamCodeById: ReadonlyMap<string, string>;
+  playerTournamentNationIndex: ReadonlyMap<string, string>;
+  warnings: Set<string>;
+}): string {
+  const nationFromRow = nationForRow(row, teamCodeById);
+  if (nationFromRow !== "UNK") return nationFromRow;
+
+  const playerId = valueFor(row, ["player_id", "player", "person_id"]);
+  if (playerId) {
+    const indexedNation = playerTournamentNationIndex.get(playerTournamentNationKey(year, playerId));
+    if (indexedNation) return indexedNation;
+  }
+
+  warnings.add("player_tournament_nation_unresolved");
   return "UNK";
 }
 
@@ -424,7 +495,9 @@ function aggregateNumber({
   fallbackIncrement,
   playersById,
   tournamentYearById,
-  teamCodeById
+  teamCodeById,
+  playerTournamentNationIndex,
+  warnings
 }: {
   rows: readonly CsvRow[];
   keys: readonly string[];
@@ -432,15 +505,18 @@ function aggregateNumber({
   playersById: ReadonlyMap<string, CsvRow>;
   tournamentYearById: ReadonlyMap<string, number>;
   teamCodeById: ReadonlyMap<string, string>;
+  playerTournamentNationIndex: ReadonlyMap<string, string>;
+  warnings: Set<string>;
 }): Map<string, number> {
   const totals = new Map<string, number>();
   for (const row of rows) {
     const playerRow = playerRowFor(row, playersById);
     const mergedRow = { ...(playerRow ?? {}), ...row };
     const rawName = playerDisplayNameFromRow(mergedRow);
-    const nation = nationForRow(mergedRow, teamCodeById);
     const year = yearForRow(mergedRow, tournamentYearById);
     if (!year || rawName === "Unknown Player") continue;
+    const nation = nationForMetricRow({ row: mergedRow, year, teamCodeById, playerTournamentNationIndex, warnings });
+    if (nation === "UNK") continue;
     const key = metricKeyFor(mergedRow, rawName, nation, year);
     totals.set(key, (totals.get(key) ?? 0) + (numberFor(mergedRow, keys) ?? fallbackIncrement));
   }
@@ -467,13 +543,15 @@ function aggregateAwardWinners({
   awardWinnerRows,
   playerRows,
   tournamentRows,
-  teamRows
+  teamRows,
+  playerTournamentNationIndex
 }: {
   awardRows: readonly CsvRow[];
   awardWinnerRows: readonly CsvRow[];
   playerRows: readonly CsvRow[];
   tournamentRows: readonly CsvRow[];
   teamRows: readonly CsvRow[];
+  playerTournamentNationIndex: ReadonlyMap<string, string>;
 }): AwardWinnerIndex {
   const warnings = new Set<string>();
   if (awardRows.length === 0) warnings.add("award_definitions_missing");
@@ -503,7 +581,14 @@ function aggregateAwardWinners({
       continue;
     }
 
-    const nation = nationForRow(mergedRow, teamCodeById);
+    const nation = nationForMetricRow({
+      row: mergedRow,
+      year,
+      teamCodeById,
+      playerTournamentNationIndex,
+      warnings
+    });
+    if (nation === "UNK") continue;
     const key = metricKeyFor(mergedRow, rawName, nation, year);
     awards.set(key, [...(awards.get(key) ?? []), editionKey]);
   }

@@ -34,6 +34,7 @@ const CSV_COLUMNS = [
   "tier",
   "editionKey",
   "primarySource",
+  "sourceTypes",
   "confidence",
   "teamResult",
   "awards",
@@ -66,6 +67,7 @@ export function toCardReport({
   const baseEvidence = resolved.evidence.find((evidence) => evidence.source === "FJELSTUL_GENERATED");
   const manualFloorApplied = resolved.evidence.some((evidence) => evidence.source === "MANUAL_CURATED");
   const awardFloorApplied = resolved.reasons.some((reason) => reason.includes("award winner floor"));
+  const sourceTypes = [...new Set(resolved.evidence.map((evidence) => evidence.source))].join("|");
 
   return {
     internalRawName: context.internalRawName,
@@ -79,6 +81,7 @@ export function toCardReport({
     tier: resolved.tier,
     editionKey: context.awards[0] ?? "NONE",
     primarySource: resolved.primarySource,
+    sourceTypes,
     confidence: resolved.confidence,
     teamResult: context.teamResult,
     awards: context.awards.join("|"),
@@ -113,8 +116,9 @@ export function buildReports({
   seed: string;
   sourceReadiness?: FjelstulSourceReadiness;
 }): RatingLabReports {
-  const anomalyDetails = detectAnomalyDetails(cards);
-  const anomalies = detectAnomalies(cards);
+  const anomalyOptions = { sampleMode };
+  const anomalyDetails = detectAnomalyDetails(cards, anomalyOptions);
+  const anomalies = detectAnomalies(cards, anomalyOptions);
   const sevenAZeroManualReferences = evaluateSevenAZeroManualReferences(cards);
   const summary = buildSummary({
     cards,
@@ -202,7 +206,11 @@ function buildSummary({
   sourceReadiness?: FjelstulSourceReadiness;
   sevenAZeroManualReferences: readonly SevenAZeroManualReferenceResult[];
 }): RatingLabSummary {
-  const warningsByCode = countWarnings([...cards, ...anomalies]);
+  const warningsByCode = mergeWarningCounts(
+    countCardWarnings(cards),
+    countAnomalyWarnings(anomalyDetails, cards),
+    countSourceWarnings(sourceReadiness?.sourceWarnings ?? [])
+  );
   const confidenceGateReasons: string[] = [];
   if (cards.some((card) => card.overall < 55 || card.overall > 99)) confidenceGateReasons.push("rating outside 55-99");
   if (cards.some((card) => card.overallStatDelta > 4)) confidenceGateReasons.push("some overall/stat deltas exceed 4");
@@ -233,11 +241,11 @@ function buildSummary({
     totalCardsSampled: cards.length,
     cardsResolved: cards.filter((card) => card.overall >= 55 && card.overall <= 99).length,
     cardsGeneratedOnly: cards.filter((card) => card.primarySource === "FJELSTUL_GENERATED").length,
-    cardsWithManualCurated: cards.filter((card) => card.primarySource === "MANUAL_CURATED").length,
-    cardsWithEaHistorical: cards.filter((card) => card.primarySource === "EA_HISTORICAL").length,
-    cardsWithRetroReference: cards.filter((card) => card.reasons.includes("RETRO_REFERENCE")).length,
-    cardsWithFiveThirtyEight: cards.filter((card) => card.reasons.includes("FIVETHIRTYEIGHT_WORLD_CUP")).length,
-    cardsWithStatsBomb: cards.filter((card) => card.reasons.includes("STATSBOMB_WORLD_CUP")).length,
+    cardsWithManualCurated: cards.filter((card) => hasSourceType(card, "MANUAL_CURATED")).length,
+    cardsWithEaHistorical: cards.filter((card) => hasSourceType(card, "EA_HISTORICAL")).length,
+    cardsWithRetroReference: cards.filter((card) => hasSourceType(card, "RETRO_REFERENCE")).length,
+    cardsWithFiveThirtyEight: cards.filter((card) => hasSourceType(card, "FIVETHIRTYEIGHT_WORLD_CUP")).length,
+    cardsWithStatsBomb: cards.filter((card) => hasSourceType(card, "STATSBOMB_WORLD_CUP")).length,
     cardsWithSevenAZeroComparison: cards.filter((card) => card.sevenAZeroRating !== null).length,
     cardsWithHighConfidenceSource: cards.filter((card) => card.confidence === "HIGH").length,
     cardsWithMediumConfidenceOnly: cards.filter((card) => card.confidence === "MEDIUM").length,
@@ -271,7 +279,9 @@ function buildSummary({
     pairwiseFail: pairwiseChecks.filter((check) => check.status === "FAIL").length,
     pairwiseMissing: pairwiseChecks.filter((check) => check.status === "MISSING").length,
     pairwiseAmbiguous: pairwiseChecks.filter((check) => check.status === "AMBIGUOUS").length,
-    generatedOnlyTop3PerTournament: anomalyDetails.filter((anomaly) => anomaly.code === "generated_only_top3_tournament").length,
+    generatedOnlyTop3PerTournament: anomalyDetails.filter(
+      (anomaly) => anomaly.code === "generated_only_top3_tournament" && anomaly.severity === "HARD_FAIL"
+    ).length,
     overallStatDeltaP90: percentile(overallStatDeltas, 0.9),
     awardWinnerFloorPct,
     sevenAZeroComparison: summarizeSevenAZeroComparison(cards),
@@ -371,7 +381,7 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Record<strin
   return groups;
 }
 
-function countWarnings(cards: readonly RatingLabCardReport[]): Record<string, number> {
+function countCardWarnings(cards: readonly RatingLabCardReport[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const card of cards) {
     for (const warning of card.warnings.split("|").filter(Boolean)) {
@@ -379,6 +389,48 @@ function countWarnings(cards: readonly RatingLabCardReport[]): Record<string, nu
     }
   }
   return counts;
+}
+
+function countAnomalyWarnings(
+  anomalies: readonly RatingLabAnomaly[],
+  cards: readonly RatingLabCardReport[]
+): Record<string, number> {
+  const cardWarningKeys = new Set<string>();
+  for (const card of cards) {
+    for (const warning of card.warnings.split("|").filter(Boolean)) {
+      cardWarningKeys.add(`${warning}:${card.internalRawName}:${card.worldCupYear}:${card.nation}`);
+    }
+  }
+
+  const counts: Record<string, number> = {};
+  for (const anomaly of anomalies) {
+    const key = `${anomaly.code}:${anomaly.internalRawName}:${anomaly.worldCupYear}:${anomaly.nation}`;
+    if (cardWarningKeys.has(key)) continue;
+    counts[anomaly.code] = (counts[anomaly.code] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function countSourceWarnings(warnings: readonly string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const warning of warnings) {
+    counts[warning] = (counts[warning] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function mergeWarningCounts(...counts: readonly Record<string, number>[]): Record<string, number> {
+  const merged: Record<string, number> = {};
+  for (const count of counts) {
+    for (const [key, value] of Object.entries(count)) {
+      merged[key] = (merged[key] ?? 0) + value;
+    }
+  }
+  return merged;
+}
+
+function hasSourceType(card: RatingLabCardReport, source: string): boolean {
+  return card.sourceTypes.split("|").includes(source);
 }
 
 function summarizeManualReferences(results: readonly SevenAZeroManualReferenceResult[]): Pick<

@@ -22,7 +22,7 @@ Overall rating is the primary target. Hidden stats are generated to explain the 
 
 The resolver checks sources in this order: `MANUAL_CURATED`, `EA_HISTORICAL`, `RETRO_REFERENCE`, `FIVETHIRTYEIGHT_WORLD_CUP`, `STATSBOMB_WORLD_CUP`, `SEVEN_A_ZERO_COMPARISON`, then `FJELSTUL_GENERATED`.
 
-Manual curation provides protective floors, not exact ratings. Optional EA-style, retro, 538, StatsBomb, and 7a0 inputs are local research/calibration signals until licensing and permission questions are resolved.
+Manual curation provides protective floors, not exact ratings. Optional EA-style, retro, 538, StatsBomb, and local 7a0 JSON inputs are developer-only research/calibration signals until licensing and permission questions are resolved. 7a0 manual references are curated screenshot/user-provided comparison values and are reported separately from optional local JSON comparisons.
 
 ## Preset
 
@@ -75,11 +75,14 @@ Reports are written to `data/import-reports/rating-lab/` and include timestamped
 Review these first:
 
 - `rating-lab-icons-*.csv`
+- `rating-lab-seven-a-zero-manual-references-*.csv`
 - `rating-lab-seven-a-zero-comparison-*.csv`
 - `rating-lab-top-by-tournament-*.csv`
 - `rating-lab-generated-only-outliers-*.csv`
 - `rating-lab-award-winners-*.csv`
 - `rating-lab-anomalies-*.csv`
+
+`rating-lab-seven-a-zero-manual-references-*.csv` is the default 7a0 review artifact. It compares cards against curated manual reference values. `rating-lab-seven-a-zero-comparison-*.csv` is only for optional local JSON comparison files; those files are validated, not loaded by default, and invalid `player.f` values are surfaced as source warnings rather than silently treated as ratings.
 
 ## Dev Sample Eye Test
 

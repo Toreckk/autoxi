@@ -1,4 +1,4 @@
-import { findSevenAZeroComparison, loadSevenAZeroLocalJsonComparisons } from "./compareWithSevenAZero.js";
+import { findSevenAZeroComparison, loadSevenAZeroLocalJsonComparisonsWithWarnings } from "./compareWithSevenAZero.js";
 import { MANUAL_RATING_FLOORS } from "./iconicTargets.js";
 import { loadFjelstulSampleWithReadiness } from "./loadFjelstulSample.js";
 import { buildReports, toCardReport, writeRatingLabReports } from "./reportWriter.js";
@@ -17,7 +17,8 @@ export type CliOptions = {
 };
 
 export async function runRatingLab(options: CliOptions): Promise<string[]> {
-  const sevenAZeroComparison = await loadSevenAZeroLocalJsonComparisons(options.sevenAZeroDir);
+  const sevenAZeroLocalJson = await loadSevenAZeroLocalJsonComparisonsWithWarnings(options.sevenAZeroDir);
+  const sevenAZeroComparison = sevenAZeroLocalJson.comparisons;
   const { cards: contexts, sourceReadiness } = await loadFjelstulSampleWithReadiness({
     sourceDir: options.sourceDir,
     sample: options.sample,
@@ -44,7 +45,13 @@ export async function runRatingLab(options: CliOptions): Promise<string[]> {
     sourceDir: options.sourceDir,
     sampleMode: options.sample,
     seed: options.seed,
-    sourceReadiness
+    sourceReadiness: {
+      ...sourceReadiness,
+      sourceWarnings: [
+        ...sourceReadiness.sourceWarnings,
+        ...sevenAZeroLocalJson.warnings.map((warning) => warning.code)
+      ]
+    }
   });
 
   return writeRatingLabReports({ reports, outputDir: options.outputDir });

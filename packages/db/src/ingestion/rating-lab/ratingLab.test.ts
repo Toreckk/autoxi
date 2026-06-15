@@ -12,19 +12,25 @@ import { compareRatingLabReports } from "./compareRatingLabReports.js";
 import {
   findSevenAZeroComparison,
   isValidOverallRating,
-  loadSevenAZeroLocalJsonComparisons
+  loadSevenAZeroLocalJsonComparisons,
+  loadSevenAZeroLocalJsonComparisonsWithWarnings
 } from "./compareWithSevenAZero.js";
 import { estimateOverallFromStats } from "./estimateOverallFromStats.js";
 import { evaluateRatingGates } from "./evaluateRatingGates.js";
 import { generateOverallFromFjelstulContext } from "./generateOverallFromFjelstulContext.js";
 import { generateStatsFromOverall } from "./generateStatsFromOverall.js";
 import { MANUAL_RATING_FLOORS } from "./iconicTargets.js";
-import { loadFjelstulSample, loadFjelstulSampleWithReadiness, mapFjelstulPosition } from "./loadFjelstulSample.js";
+import {
+  loadFjelstulSample,
+  loadFjelstulSampleWithReadiness,
+  mapFjelstulPosition,
+  playerDisplayNameFromRow
+} from "./loadFjelstulSample.js";
 import { detectAnomalyDetails } from "./anomalyDetection.js";
 import { evaluatePairwiseCheck } from "./pairwiseChecks.js";
 import { buildReports, detectAnomalies, toCardReport, writeRatingLabReports } from "./reportWriter.js";
 import { resolveCardRating } from "./resolveCardRating.js";
-import { resolveRatingLabPresetOptions } from "./runRatingLab.js";
+import { resolveRatingLabPresetOptions, runRatingLab } from "./runRatingLab.js";
 import {
   evaluateSevenAZeroReference,
   evaluateSevenAZeroManualReferences,
@@ -99,6 +105,43 @@ describe("rating lab spike", () => {
     const cards = await loadFjelstulSample({ sourceDir: dir, sample: "all", seed: "test" });
 
     expect(cards[0]?.identityKey).toBe("fallback:solo fallback:bra");
+  });
+
+  it("prefers team_id mapping over free-text team fields", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-team-id-"));
+    await writeFixtureCsv(dir, "players.csv", ["player_id,given_name,family_name", "p1,Diego,Maradona"]);
+    await writeFixtureCsv(dir, "squads.csv", [
+      "player_id,year,team_id,team,position",
+      "p1,1986,arg,Argentina Display,CAM"
+    ]);
+    await writeFixtureCsv(dir, "tournaments.csv", ["tournament_id,year", "wc1986,1986"]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code", "arg,ARG"]);
+
+    const cards = await loadFjelstulSample({ sourceDir: dir, sample: "all", seed: "test" });
+
+    expect(cards[0]?.nation).toBe("ARG");
+  });
+
+  it("uses squad-derived player+tournament nation fallback for awards, appearances, and goals", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-nation-fallback-"));
+    await writeFixtureCsv(dir, "players.csv", ["player_id,given_name,family_name", "p1,Diego,Maradona"]);
+    await writeFixtureCsv(dir, "squads.csv", ["player_id,tournament_id,team_id,position", "p1,wc1986,arg,CAM"]);
+    await writeFixtureCsv(dir, "tournaments.csv", ["tournament_id,year", "wc1986,1986"]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code", "arg,ARG"]);
+    await writeFixtureCsv(dir, "awards.csv", ["award_id,award_name", "golden_ball,Golden Ball"]);
+    await writeFixtureCsv(dir, "award_winners.csv", ["tournament_id,award_id,player_id", "wc1986,golden_ball,p1"]);
+    await writeFixtureCsv(dir, "appearances.csv", ["tournament_id,player_id,appearances,minutes", "wc1986,p1,7,630"]);
+    await writeFixtureCsv(dir, "goals.csv", ["tournament_id,player_id,goals", "wc1986,p1,5"]);
+
+    const { cards, sourceReadiness } = await loadFjelstulSampleWithReadiness({ sourceDir: dir, sample: "all", seed: "test" });
+
+    expect(cards[0]).toMatchObject({ awards: ["GOLDEN_BALL"], appearances: 7, minutes: 630, goals: 5 });
+    expect(sourceReadiness.sourceWarnings).not.toContain("player_tournament_nation_unresolved");
+  });
+
+  it("does not treat player as a display-name field", () => {
+    expect(playerDisplayNameFromRow({ player: "p123" })).toBe("Unknown Player");
+    expect(playerDisplayNameFromRow({ player: "p123", given_name: "Diego", family_name: "Maradona" })).toBe("Diego Maradona");
   });
 
   it("marks missing required source files as readiness failures without failing optional files", async () => {
@@ -256,6 +299,50 @@ describe("rating lab spike", () => {
 
     expect(comparisons).toHaveLength(1);
     expect(comparisons[0]?.internalName).toBe("Rivelino");
+  });
+
+  it("surfaces local 7a0 JSON validation warnings in the rating-lab summary", async () => {
+    const sourceDir = await mkdtemp(join(tmpdir(), "rating-lab-source-"));
+    const sevenAZeroDir = await mkdtemp(join(tmpdir(), "rating-lab-7a0-warnings-"));
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-output-"));
+    await writeFixtureCsv(sourceDir, "players.csv", ["player_id,given_name,family_name", "p1,Luis,Castro"]);
+    await writeFixtureCsv(sourceDir, "squads.csv", ["player_id,year,team_id,position", "p1,1954,uru,CM"]);
+    await writeFixtureCsv(sourceDir, "tournaments.csv", ["tournament_id,year", "wc1954,1954"]);
+    await writeFixtureCsv(sourceDir, "teams.csv", ["team_id,team_code", "uru,URU"]);
+    await writeFile(
+      join(sevenAZeroDir, "uru-1954.json"),
+      JSON.stringify({ sel: "URU", copa: 1954, squad: [{ name: "Luis Castro", sel: "URU", copa: 1954, f: 218 }] }),
+      "utf8"
+    );
+
+    await runRatingLab({
+      sourceDir,
+      sevenAZeroDir,
+      sample: "all",
+      randomCount: 10,
+      seed: "test",
+      outputDir
+    });
+    const summary = JSON.parse(await readFile(join(outputDir, "latest-summary.json"), "utf8")) as RatingLabSummary;
+
+    expect(summary.sourceWarnings).toContain("seven_a_zero_rating_out_of_range");
+    expect(summary.warningsByCode.seven_a_zero_rating_out_of_range).toBe(1);
+  });
+
+  it("returns local 7a0 JSON validation warning details", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-7a0-warning-details-"));
+    await writeFile(
+      join(dir, "sample.json"),
+      JSON.stringify({ sel: "BRA", copa: 1974, squad: [{ name: "Bad Rating", sel: "BRA", copa: 1974, f: "95" }] }),
+      "utf8"
+    );
+
+    const result = await loadSevenAZeroLocalJsonComparisonsWithWarnings(dir);
+
+    expect(result.comparisons).toHaveLength(0);
+    expect(result.warnings).toEqual([
+      { code: "seven_a_zero_rating_field_unknown", file: "sample.json", playerName: "Bad Rating" }
+    ]);
   });
 
   it("evaluates benchmark pass, warn, fail, and missing states", () => {
@@ -438,14 +525,24 @@ describe("rating lab spike", () => {
     expect(anomalies[0]?.warnings).toContain("no_appearance_high_rating");
   });
 
-  it("detects generated-only tournament top-three outliers", () => {
+  it("marks generated-only tournament top-three as warning for partial samples", () => {
     const anomalies = detectAnomalyDetails([
       report({ internalRawName: "Generated Star", worldCupYear: 1970, nation: "BRA", overall: 91, primarySource: "FJELSTUL_GENERATED" }),
       report({ internalRawName: "Curated Star", worldCupYear: 1970, nation: "BRA", overall: 90, primarySource: "MANUAL_CURATED" }),
       report({ internalRawName: "Known Star", worldCupYear: 1970, nation: "ITA", overall: 89, primarySource: "MANUAL_CURATED" })
-    ]);
+    ], { sampleMode: "iconic-plus-random" });
 
-    expect(anomalies.some((anomaly) => anomaly.code === "generated_only_top3_tournament")).toBe(true);
+    expect(anomalies.find((anomaly) => anomaly.code === "generated_only_top3_tournament")?.severity).toBe("WARNING");
+  });
+
+  it("marks generated-only tournament top-three as hard fail for full samples", () => {
+    const anomalies = detectAnomalyDetails([
+      report({ internalRawName: "Generated Star", worldCupYear: 1970, nation: "BRA", overall: 91, primarySource: "FJELSTUL_GENERATED" }),
+      report({ internalRawName: "Curated Star", worldCupYear: 1970, nation: "BRA", overall: 90, primarySource: "MANUAL_CURATED" }),
+      report({ internalRawName: "Known Star", worldCupYear: 1970, nation: "ITA", overall: 89, primarySource: "MANUAL_CURATED" })
+    ], { sampleMode: "all" });
+
+    expect(anomalies.find((anomaly) => anomaly.code === "generated_only_top3_tournament")?.severity).toBe("HARD_FAIL");
   });
 
   it("builds a report row from a resolved card", () => {
@@ -469,8 +566,54 @@ describe("rating lab spike", () => {
     expect(row.overall).toBeGreaterThanOrEqual(96);
     expect(row.publicPlaceholderName).not.toContain("Messi");
     expect(row.baseRating).not.toBeNull();
+    expect(row.sourceTypes).toContain("MANUAL_CURATED");
     expect(row.manualFloorApplied).toBe("true");
     expect(row.finalOverall).toBe(row.overall);
+  });
+
+  it("does not double-count anomaly warnings already present on card rows", () => {
+    const reports = buildReports({
+      cards: [
+        report({
+          internalRawName: "Generated Star",
+          overall: 91,
+          primarySource: "FJELSTUL_GENERATED",
+          warnings: "unknown_high_rating"
+        })
+      ],
+      sourceDir: "fixture",
+      sampleMode: "all",
+      seed: "test",
+      sourceReadiness: sourceReadinessFixture()
+    });
+
+    expect(reports.summary.warningsByCode.unknown_high_rating).toBe(1);
+  });
+
+  it("counts source coverage from structured sourceTypes instead of reason strings", () => {
+    const reports = buildReports({
+      cards: [
+        report({
+          primarySource: "FJELSTUL_GENERATED",
+          sourceTypes: "FJELSTUL_GENERATED|RETRO_REFERENCE",
+          reasons: ""
+        })
+      ],
+      sourceDir: "fixture",
+      sampleMode: "all",
+      seed: "test",
+      sourceReadiness: sourceReadinessFixture()
+    });
+
+    expect(reports.summary.cardsWithRetroReference).toBe(1);
+  });
+
+  it("documents the 7a0 manual reference CSV and local JSON distinction", async () => {
+    const docs = await readFile(join(process.cwd(), "..", "..", "docs", "spikes", "pre-phase-1b-rating-lab.md"), "utf8");
+
+    expect(docs).toContain("rating-lab-seven-a-zero-manual-references-*.csv");
+    expect(docs).toContain("manual references");
+    expect(docs).toContain("local JSON comparison");
   });
 
   it("evaluates gates as ready when hard failures and warnings are clear", () => {
@@ -621,6 +764,7 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     tier: "KEY_PLAYER",
     editionKey: "NONE",
     primarySource: "FJELSTUL_GENERATED",
+    sourceTypes: "FJELSTUL_GENERATED",
     confidence: "MEDIUM",
     teamResult: "UNKNOWN",
     awards: "",
