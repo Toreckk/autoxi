@@ -37,4 +37,7 @@ Thumbs.db
 *.sqlite3
 .turbo/
 data/import-reports/
-data/sources/
+data/sources/*
+!data/sources/README.md
+data/sources/fjelstul-worldcup/data-csv/
+packages/db/data/sources/fjelstul-worldcup/data-csv/

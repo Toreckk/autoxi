@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -7,35 +7,50 @@ import {
   evaluateBenchmarkDistance,
   findBenchmarkCandidates,
   getBenchmarkSearchTerms
-} from "./benchmarkRanges.js";
-import { compareRatingLabReports } from "./compareRatingLabReports.js";
+} from "./domain/evaluation/benchmarkRanges.js";
+import { compareRatingLabReports } from "./domain/evaluation/compareRatingLabReports.js";
+import { resolveRatingDistributionDiagnostics } from "./domain/evaluation/resolveRatingDistributionDiagnostics.js";
 import {
   findSevenAZeroComparison,
   isValidOverallRating,
   loadSevenAZeroLocalJsonComparisons,
   loadSevenAZeroLocalJsonComparisonsWithWarnings
-} from "./compareWithSevenAZero.js";
-import { estimateOverallFromStats } from "./estimateOverallFromStats.js";
-import { evaluateRatingGates } from "./evaluateRatingGates.js";
-import { generateOverallFromFjelstulContext } from "./generateOverallFromFjelstulContext.js";
-import { generateStatsFromOverall } from "./generateStatsFromOverall.js";
-import { MANUAL_RATING_FLOORS } from "./iconicTargets.js";
+} from "./sources/seven-a-zero/compareWithSevenAZero.js";
+import { estimatePreviewImportSize } from "./db-preview/estimatePreviewImportSize.js";
+import { estimateOverallFromStats } from "./domain/rating/estimateOverallFromStats.js";
+import { evaluateRatingGates } from "./domain/evaluation/evaluateRatingGates.js";
+import { generateOverallFromFjelstulContext } from "./domain/rating/generateOverallFromFjelstulContext.js";
+import { generateStatsFromOverall } from "./domain/rating/generateStatsFromOverall.js";
+import { MANUAL_RATING_FLOORS } from "./sources/manual/iconicTargets.js";
 import {
   loadFjelstulSample,
   loadFjelstulSampleWithReadiness,
   mapFjelstulPosition,
-  playerDisplayNameFromRow
-} from "./loadFjelstulSample.js";
-import { detectAnomalyDetails } from "./anomalyDetection.js";
-import { evaluatePairwiseCheck } from "./pairwiseChecks.js";
-import { buildReports, detectAnomalies, toCardReport, writeRatingLabReports } from "./reportWriter.js";
-import { resolveCardRating } from "./resolveCardRating.js";
-import { resolveRatingLabPresetOptions, runRatingLab } from "./runRatingLab.js";
+  playerDisplayNameFromRow,
+  positionForRow
+} from "./sources/fjelstul/loadFjelstulSample.js";
+import { detectAnomalyDetails } from "./domain/evaluation/anomalyDetection.js";
+import { evaluatePairwiseCheck } from "./domain/evaluation/pairwiseChecks.js";
+import { buildReports, detectAnomalies, toCardReport, writeRatingLabReports } from "./reporting/reportWriter.js";
+import { renderRatingLabPreviewHtml, writeRatingLabPreviewHtml } from "./reporting/previewHtmlWriter.js";
+import { resolveCardRating } from "./domain/rating/resolveCardRating.js";
+import { loadRatingFormulaConfig, mergeRatingFormulaConfig } from "./domain/rating/ratingFormulaConfig.js";
+import { prePhase1BCalibrationConfig } from "./domain/rating/ratingFormulaPresets.js";
+import { runRatingLabWriteDevPreview } from "./cli/runRatingLabWriteDevPreview.js";
+import { resolveRatingLabPresetOptions, runRatingLab } from "./cli/runRatingLab.js";
+import { assertFjelstulAvailable, resolveRatingLabSourcePaths } from "./config/ratingLabSourcePaths.js";
 import {
   evaluateSevenAZeroReference,
   evaluateSevenAZeroManualReferences,
   findManualReferenceCandidates
-} from "./sevenAZeroManualReferences.js";
+} from "./sources/seven-a-zero/sevenAZeroManualReferences.js";
+import { createEaHistoricalAdapter } from "./sources/ea/eaHistoricalAdapter.js";
+import { createRetroReferenceAdapter } from "./sources/retro/retroReferenceAdapter.js";
+import { profileRegisteredSources } from "./sources/sourceRegistry.js";
+import { profileTransfermarktSource } from "./sources/transfermarkt/transfermarktProfiler.js";
+import { matchTransfermarktPlayer } from "./sources/transfermarkt/transfermarktMatcher.js";
+import { resolveTransfermarktSeasonBaseline } from "./sources/transfermarkt/transfermarktSeasonBaseline.js";
+import { resolveTransfermarktMultiSeasonBaseline } from "./sources/transfermarkt/transfermarktMultiSeasonBaseline.js";
 import type {
   BenchmarkResult,
   BenchmarkTarget,
@@ -43,7 +58,7 @@ import type {
   RatingLabCardReport,
   RatingLabSummary,
   SevenAZeroManualReference
-} from "./types.js";
+} from "./domain/types.js";
 import { publicSafePlaceholderName } from "./utils.js";
 
 describe("rating lab spike", () => {
@@ -144,6 +159,19 @@ describe("rating lab spike", () => {
     expect(playerDisplayNameFromRow({ player: "p123", given_name: "Diego", family_name: "Maradona" })).toBe("Diego Maradona");
   });
 
+  it("ignores source placeholder values when building player display names", () => {
+    expect(playerDisplayNameFromRow({ given_name: "not applicable", family_name: "Socrates" })).toBe("Socrates");
+    expect(playerDisplayNameFromRow({ given_name: "Diego", family_name: "Maradona" })).toBe("Diego Maradona");
+  });
+
+  it("falls back to player role flags when row position text is absent", () => {
+    expect(positionForRow({ goal_keeper: "1", defender: "0", midfielder: "0", forward: "0" })).toBe("GK");
+    expect(positionForRow({ goal_keeper: "0", defender: "0", midfielder: "0", forward: "1" })).toBe("ST");
+    expect(positionForRow({ goal_keeper: "0", defender: "1", midfielder: "0", forward: "0" })).toBe("CB");
+    expect(positionForRow({ position_name: "goal keeper", goal_keeper: "0" })).toBe("GK");
+    expect(positionForRow({ position_code: "FW", midfielder: "1" })).toBe("ST");
+  });
+
   it("marks missing required source files as readiness failures without failing optional files", async () => {
     const emptyDir = await mkdtemp(join(tmpdir(), "rating-lab-empty-"));
     const missing = await loadFjelstulSampleWithReadiness({ sourceDir: emptyDir, sample: "all", seed: "test" });
@@ -181,6 +209,47 @@ describe("rating lab spike", () => {
 
     expect(result.overall).toBeGreaterThanOrEqual(55);
     expect(result.overall).toBeLessThanOrEqual(99);
+  });
+
+  it("caps generated no-signal ratings at 78", () => {
+    const result = generateOverallFromFjelstulContext(
+      cardContext({
+        appearances: 0,
+        minutes: 0,
+        goals: 0,
+        awards: [],
+        teamResult: "CHAMPION",
+        captain: false,
+        host: true,
+        samePlayerEditionCount: 5
+      })
+    );
+
+    expect(result.overall).toBeLessThanOrEqual(78);
+  });
+
+  it("caps limited-signal generated ratings at 84", () => {
+    const result = generateOverallFromFjelstulContext(
+      cardContext({ appearances: 2, minutes: 120, goals: 0, awards: [], teamResult: "CHAMPION", captain: false })
+    );
+
+    expect(result.overall).toBeLessThanOrEqual(84);
+  });
+
+  it("allows award floors to exceed generated caps", () => {
+    const result = generateOverallFromFjelstulContext(
+      cardContext({ appearances: 0, minutes: 0, goals: 0, awards: ["GOLDEN_BALL"], teamResult: "UNKNOWN", captain: false })
+    );
+
+    expect(result.overall).toBeGreaterThanOrEqual(95);
+  });
+
+  it("caps generated Golden Boot ratings below all-time icon range without manual evidence", () => {
+    const result = generateOverallFromFjelstulContext(
+      cardContext({ awards: ["GOLDEN_BOOT"], goals: 8, teamResult: "CHAMPION", appearances: 7, minutes: 630 })
+    );
+
+    expect(result.overall).toBeLessThanOrEqual(94);
   });
 
   it("generates deterministic profile-specific stats and estimates overall", () => {
@@ -272,6 +341,43 @@ describe("rating lab spike", () => {
 
     expect(comparisons).toHaveLength(1);
     expect(match?.rating).toBe(74);
+  });
+
+  it("keeps 7a0 manual references comparison-only without special-case manual anchors", () => {
+    const resolved = resolveCardRating(
+      cardContext({
+        internalRawName: "Diego Maradona",
+        nation: "ARG",
+        worldCupYear: 1982,
+        appearances: 5,
+        minutes: 450,
+        goals: 2,
+        teamResult: "UNKNOWN"
+      }),
+      { manualCurated: MANUAL_RATING_FLOORS }
+    );
+
+    expect(resolved.primarySource).toBe("FJELSTUL_GENERATED");
+    expect(resolved.evidence.map((evidence) => evidence.source)).not.toContain("SEVEN_A_ZERO_COMPARISON");
+    expect(resolved.breakdown?.comparisonReferences).toHaveLength(0);
+  });
+
+  it("chooses the strongest matching manual floor when curated sources overlap", () => {
+    const resolved = resolveCardRating(cardContext({ internalRawName: "Franz Beckenbauer", nation: "DEU", worldCupYear: 1974 }), {
+      manualCurated: [
+        {
+          id: "fixture-beckenbauer-floor",
+          nameSearch: "Beckenbauer",
+          nationCode: "FRG",
+          worldCupYear: 1974,
+          floor: 94,
+          reason: "fixture floor"
+        }
+      ]
+    });
+
+    expect(resolved.primarySource).toBe("MANUAL_CURATED");
+    expect(resolved.overall).toBeGreaterThanOrEqual(94);
   });
 
   it("validates optional local 7a0 JSON ratings before using player.f", async () => {
@@ -471,6 +577,144 @@ describe("rating lab spike", () => {
     expect(await readFile(manualReportPath!, "utf8")).toContain(
       "referenceId,playerName,aliases,worldCupYear,nationCode,referenceOverall,actualRating,delta,status,matchedInternalRawName,matchedPublicName,candidateNames,tolerance,reason"
     );
+  });
+
+  it("writes a static HTML preview with escaped dev-only raw text", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-preview-"));
+    const summary = summaryFixture({
+      cardSnapshots: [
+        {
+          ...summaryFixture().cardSnapshots[0]!,
+          internalRawName: "<script>alert(1)</script>",
+          publicPlaceholderName: "ARG-1986-CAM-SAFE"
+        }
+      ],
+      confidenceGateReasons: ["fixture gate"]
+    });
+    const outputPath = join(outputDir, "rating-lab-preview.html");
+
+    await writeRatingLabPreviewHtml({ summary, outputPath });
+    const html = await readFile(outputPath, "utf8");
+
+    expect(html).toContain("Rating Lab Preview");
+    expect(html).toContain("fixture gate");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
+
+  it("renders preview sections for top cards and 7a0 manual deltas", () => {
+    const html = renderRatingLabPreviewHtml(
+      summaryFixture({
+        sevenAZeroManualAverageAbsoluteDelta: 3,
+        sevenAZeroManualDeltaP90: 5
+      })
+    );
+
+    expect(html).toContain("Top Cards By Tournament");
+    expect(html).toContain("7a0 Manual Reference Deltas");
+  });
+
+  it("estimates dev preview import size conservatively", () => {
+    const estimate = estimatePreviewImportSize(summaryFixture(), 500);
+
+    expect(estimate.cardsToWrite).toBe(1);
+    expect(estimate.estimatedTotalRows).toBeGreaterThan(estimate.cardsToWrite);
+    expect(estimate.estimatedStorageMb).toBeGreaterThan(0);
+  });
+
+  it("refuses dev preview without required safety flags", async () => {
+    await expect(runRatingLabWriteDevPreview(["--report", "missing.json"])).rejects.toThrow("--dev-only");
+  });
+
+  it("allows dev preview estimate-only without DATABASE_URL", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-dev-preview-"));
+    const reportPath = join(dir, "latest-summary.json");
+    await writeFile(reportPath, JSON.stringify(summaryFixture()), "utf8");
+
+    const message = await runRatingLabWriteDevPreview([
+      "--report",
+      reportPath,
+      "--max-cards",
+      "500",
+      "--dev-only",
+      "--estimate-only"
+    ]);
+
+    expect(message).toContain("Rating lab dev preview estimate");
+  });
+
+  it("refuses dev preview writes without DATABASE_URL", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-dev-preview-write-"));
+    const reportPath = join(dir, "latest-summary.json");
+    await writeFile(reportPath, JSON.stringify(summaryFixture()), "utf8");
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "";
+
+    try {
+      await expect(
+        runRatingLabWriteDevPreview([
+          "--report",
+          reportPath,
+          "--max-cards",
+          "500",
+          "--dev-only",
+          "--reset-rating-lab-preview"
+        ])
+      ).rejects.toThrow("DATABASE_URL");
+    } finally {
+      if (originalDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = originalDatabaseUrl;
+      }
+    }
+  });
+
+  it("reports skeleton external rating adapters as unavailable", async () => {
+    const ea = createEaHistoricalAdapter();
+    const retro = createRetroReferenceAdapter();
+
+    expect((await ea.load({ mode: "report-only" })).warnings).toContain("source_unavailable");
+    expect((await retro.load({ sourceDir: "missing", mode: "report-only" })).warnings).toContain("source_unavailable");
+    expect(ea.findCandidates(cardContext())).toHaveLength(0);
+  });
+
+  it("marks local skeleton source folders as present but not implemented", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rating-lab-sources-"));
+    const clubEloDir = join(root, "data", "sources", "club-elo");
+    await mkdir(clubEloDir, { recursive: true });
+    await writeFixtureCsv(clubEloDir, "club_elo_1982-06-13.csv", ["Rank,Club,Elo", "1,Liverpool,1900"]);
+    const resolved = resolveRatingLabSourcePaths({ cwd: root, env: {} });
+
+    const availability = await profileRegisteredSources(resolved);
+    const clubElo = availability.find((source) => source.sourceKey === "CLUB_ELO");
+
+    expect(clubElo).toMatchObject({
+      status: "available",
+      warnings: ["adapter_not_implemented"],
+      rowCount: 1
+    });
+  });
+
+  it("keeps domain files independent from IO and adapter layers", async () => {
+    const files = await listTypeScriptFiles(join(process.cwd(), "src", "ingestion", "rating-lab", "domain"));
+    const forbidden = [
+      /from "node:/,
+      /from '\s*node:/,
+      /process\./,
+      /\.\.\/\.\.\/sources\//,
+      /\.\.\/\.\.\/reporting\//,
+      /\.\.\/\.\.\/db-preview\//,
+      /\.\.\/\.\.\/cli\//
+    ];
+
+    for (const file of files) {
+      const contents = await readFile(file, "utf8");
+      expect(
+        forbidden.some((pattern) => pattern.test(contents)),
+        `${file} imports an infrastructure layer or runtime API`
+      ).toBe(false);
+    }
   });
 
   it("applies manual floors only to matching nation and year", () => {
@@ -721,6 +965,94 @@ describe("rating lab spike", () => {
       resolveRatingLabPresetOptions("pre-phase-1b-calibration")
     );
   });
+
+  it("loads formula presets and applies structured overrides without changing the default distribution mode", async () => {
+    const config = await loadRatingFormulaConfig();
+    const merged = mergeRatingFormulaConfig(prePhase1BCalibrationConfig, {
+      caps: { ...prePhase1BCalibrationConfig.caps, noSignalGeneratedMax: 72 }
+    });
+
+    expect(config.ratingDistribution.selectedStrategy).toBe("RAW_EVIDENCE");
+    expect(merged.caps.noSignalGeneratedMax).toBe(72);
+    expect(merged.finalOverallWeights.worldCupOnlyFallback.generatedBaseline).toBe(
+      prePhase1BCalibrationConfig.finalOverallWeights.worldCupOnlyFallback.generatedBaseline
+    );
+  });
+
+  it("resolves rating-lab source paths with defaults, env, and CLI-style overrides", () => {
+    const resolved = resolveRatingLabSourcePaths({
+      cwd: "D:\\Programming\\autoxi",
+      env: { RATING_LAB_SOURCE_ROOT: "custom-sources", RATING_LAB_TRANSFERMARKT_SOURCE_DIR: "env-tm" },
+      overrides: { transfermarkt: "cli-tm" }
+    });
+
+    expect(resolved.sources.fjelstul.path).toContain("custom-sources");
+    expect(resolved.sources.transfermarkt.path).toContain("cli-tm");
+    expect(resolved.availability.find((source) => source.sourceKey === "SEVEN_A_ZERO_MANUAL")?.affectsRating).toBe(false);
+  });
+
+  it("explains missing Fjelstul source while optional sources remain warnings", () => {
+    const resolved = resolveRatingLabSourcePaths({ cwd: "D:\\definitely-missing-rating-lab", env: {} });
+
+    expect(() => assertFjelstulAvailable(resolved)).toThrow("Set RATING_LAB_FJELSTUL_SOURCE_DIR or pass --fjelstul-source-dir.");
+    expect(resolved.sources.transfermarkt.warnings).toContain("transfermarkt_source_unavailable");
+  });
+
+  it("profiles Transfermarkt CSV files and extracts coverage years", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-tm-"));
+    await writeFixtureCsv(dir, "players.csv", [
+      "player_name,season,market_value_eur",
+      "Diego Maradona,1982/83,10000000",
+      "Socrates,1981,8000000"
+    ]);
+
+    const profile = await profileTransfermarktSource(dir);
+
+    expect(profile.totalRows).toBe(2);
+    expect(profile.files[0]).toMatchObject({ minYear: 1981, maxYear: 1982 });
+  });
+
+  it("matches Transfermarkt candidates at high, medium, and low confidence", () => {
+    const context = cardContext({ internalRawName: "Diego Armando Maradona", nation: "ARG", worldCupYear: 1982 });
+    const candidates = matchTransfermarktPlayer(context, [
+      { playerName: "Diego Armando Maradona", normalizedName: "diego armando maradona", nation: "ARG", seasonYear: 1982, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 },
+      { playerName: "Diego Maradona", normalizedName: "diego maradona", nation: "ARG", seasonYear: 1984, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 },
+      { playerName: "Maradona", normalizedName: "maradona", nation: "BRA", seasonYear: 1978, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 }
+    ]);
+
+    expect(candidates.map((candidate) => candidate.confidence)).toEqual(["HIGH", "MEDIUM", "LOW"]);
+  });
+
+  it("turns Transfermarkt raw values into percentiles and multi-season trends", () => {
+    const peerGroup = [
+      { playerName: "A", normalizedName: "a", seasonYear: 1982, marketValueEur: 1, appearances: 1, goals: 0, assists: 0, minutes: 90 },
+      { playerName: "B", normalizedName: "b", seasonYear: 1982, marketValueEur: 10, appearances: 10, goals: 3, assists: 2, minutes: 900 }
+    ];
+    const baseline = resolveTransfermarktSeasonBaseline(peerGroup[1]!, peerGroup);
+    const multiSeason = resolveTransfermarktMultiSeasonBaseline({
+      sameSeasonScore: 91,
+      previousSeasonScore: 87,
+      twoSeasonsBackScore: 84,
+      threeSeasonsBackScore: 81
+    });
+
+    expect(baseline.marketValuePercentile).toBe(1);
+    expect(baseline.score).toBeGreaterThan(90);
+    expect(multiSeason.marketValueTrend).toBe("RISING");
+    expect(multiSeason.trendAdjustment).toBe(1);
+  });
+
+  it("reports elite rating distribution diagnostics", () => {
+    const diagnostics = resolveRatingDistributionDiagnostics([
+      report({ overall: 99, worldCupYear: 1986, position: "CAM" }),
+      report({ overall: 95, worldCupYear: 1986, position: "ST" }),
+      report({ overall: 89, worldCupYear: 1982, position: "CM" })
+    ]);
+
+    expect(diagnostics.count90Plus).toBe(2);
+    expect(diagnostics.count95Plus).toBe(2);
+    expect(diagnostics.byWorldCupYear.find((group) => group.key === "1986")?.count90Plus).toBe(2);
+  });
 });
 
 function cardContext(overrides: Partial<FjelstulCardContext> = {}): FjelstulCardContext {
@@ -782,7 +1114,37 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     finalOverall: 80,
     warnings: "",
     reasons: "",
-    ...overrides
+    ...overrides,
+    formulaVersion: overrides.formulaVersion ?? "test-formula",
+    selectedDistributionStrategy: overrides.selectedDistributionStrategy ?? "RAW_EVIDENCE",
+    rawEvidenceOverall: overrides.rawEvidenceOverall ?? overrides.overall ?? 80,
+    selectedOverall: overrides.selectedOverall ?? overrides.overall ?? 80,
+    seasonAbilityBaseline: overrides.seasonAbilityBaseline ?? null,
+    seasonAbilitySource: overrides.seasonAbilitySource ?? null,
+    seasonAbilityConfidence: overrides.seasonAbilityConfidence ?? "NONE",
+    sameSeasonScore: overrides.sameSeasonScore ?? null,
+    previousSeasonScore: overrides.previousSeasonScore ?? null,
+    twoSeasonsBackScore: overrides.twoSeasonsBackScore ?? null,
+    threeSeasonsBackScore: overrides.threeSeasonsBackScore ?? null,
+    weightedMultiSeasonScore: overrides.weightedMultiSeasonScore ?? null,
+    marketValueTrend: overrides.marketValueTrend ?? "UNKNOWN",
+    productionTrend: overrides.productionTrend ?? "UNKNOWN",
+    minutesTrend: overrides.minutesTrend ?? "UNKNOWN",
+    trendAdjustment: overrides.trendAdjustment ?? 0,
+    worldCupPerformanceRating: overrides.worldCupPerformanceRating ?? overrides.overall ?? 80,
+    worldCupPerformanceSource: overrides.worldCupPerformanceSource ?? "FJELSTUL_WORLD_CUP",
+    worldCupPerformanceConfidence: overrides.worldCupPerformanceConfidence ?? "MEDIUM",
+    leagueStrengthAdjustment: overrides.leagueStrengthAdjustment ?? 0,
+    clubStrengthAdjustment: overrides.clubStrengthAdjustment ?? 0,
+    ageCurveAdjustment: overrides.ageCurveAdjustment ?? 0,
+    awardAdjustment: overrides.awardAdjustment ?? 0,
+    manualAnchorAdjustment: overrides.manualAnchorAdjustment ?? 0,
+    finalOverallBeforeCaps: overrides.finalOverallBeforeCaps ?? overrides.overall ?? 80,
+    capsApplied: overrides.capsApplied ?? "",
+    bonusesApplied: overrides.bonusesApplied ?? "",
+    warningsApplied: overrides.warningsApplied ?? "",
+    evidenceSummary: overrides.evidenceSummary ?? "",
+    comparisonSummary: overrides.comparisonSummary ?? ""
   };
 }
 
@@ -914,4 +1276,15 @@ function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSum
 
 async function writeFixtureCsv(dir: string, filename: string, lines: readonly string[]): Promise<void> {
   await writeFile(join(dir, filename), `${lines.join("\n")}\n`, "utf8");
+}
+
+async function listTypeScriptFiles(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...(await listTypeScriptFiles(path)));
+    if (entry.isFile() && entry.name.endsWith(".ts")) files.push(path);
+  }
+  return files;
 }

@@ -23,9 +23,14 @@
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx src/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "rating-lab": "tsx src/ingestion/rating-lab/runRatingLab.ts",
-    "rating-lab:gate": "tsx src/ingestion/rating-lab/runRatingGateCheck.ts",
-    "rating-lab:compare": "tsx src/ingestion/rating-lab/runRatingLabCompare.ts"
+    "rating-lab": "tsx src/ingestion/rating-lab/cli/runRatingLab.ts",
+    "rating-lab:loop": "tsx src/ingestion/rating-lab/cli/runRatingLabLoop.ts",
+    "rating-lab:gate": "tsx src/ingestion/rating-lab/cli/runRatingGateCheck.ts",
+    "rating-lab:compare": "tsx src/ingestion/rating-lab/cli/runRatingLabCompare.ts",
+    "rating-lab:preview": "tsx src/ingestion/rating-lab/cli/runRatingLabPreview.ts",
+    "rating-lab:write-dev-preview": "tsx src/ingestion/rating-lab/cli/runRatingLabWriteDevPreview.ts",
+    "rating-lab:profile-sources": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileSources.ts",
+    "rating-lab:profile-transfermarkt": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileTransfermarkt.ts"
   },
   "dependencies": {
     "@autoxi/domain": "workspace:*",
