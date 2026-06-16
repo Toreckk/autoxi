@@ -52,6 +52,20 @@ Run the deterministic full loop with:
 pnpm db:rating-lab:loop
 ```
 
+Primary workflow:
+
+```bash
+pnpm db:rating-lab
+pnpm db:rating-lab:gate
+pnpm db:rating-lab:preview
+```
+
+Advanced formula experiments:
+
+```bash
+pnpm db:rating-lab -- --formula-config data/rating-formulas/my-test.json
+```
+
 Both commands default to `data/sources/fjelstul-worldcup/data-csv`, preset `pre-phase-1b-calibration`, `sample=iconic-plus-random`, `randomCount=300`, and `seed=42`. The loop ingests source CSVs, resolves ratings, writes reports, evaluates gates, generates the static HTML preview, and prints a dev DB preview estimate.
 
 ## Gates
@@ -86,7 +100,11 @@ Pairwise checks catch ordering mistakes that range benchmarks can miss, such as 
 
 ## Rating Provenance
 
-Private CSV rows include debug fields such as `formulaVersion`, `selectedDistributionStrategy`, `primarySource`, `confidence`, `baseRating`, `rawEvidenceOverall`, `selectedOverall`, `seasonAbilityBaseline`, `worldCupPerformanceRating`, `manualAnchorAdjustment`, `capsApplied`, `evidenceSummary`, `comparisonSummary`, `finalOverall`, `estimatedOverallFromStats`, `overallStatDelta`, `reasons`, and `warnings`.
+Private CSV rows include debug fields such as `formulaVersion`, `formulaConfigPath`, `selectedDistributionStrategy`, `primarySource`, `confidence`, `baseRating`, `rawEvidenceOverall`, `selectedOverall`, `seasonAbilityBaseline`, `worldCupPerformanceRating`, `transfermarktRating`, source effective weights, `manualAnchorAdjustment`, `capsApplied`, `evidenceSummary`, `comparisonSummary`, `finalOverall`, `estimatedOverallFromStats`, `overallStatDelta`, `reasons`, and `warnings`.
+
+The active tuning surface is `data/rating-formulas/pre-phase-1b-raw-evidence.json`. It is validated with Zod before use. Tune Transfermarkt/Fjelstul weights, annual Transfermarkt signal weights, four-year World Cup window weights, missing-season rules, low-minutes availability behavior, caps, distribution buckets, and local preview name settings there.
+
+RAW_EVIDENCE remains the selected strategy. No Gaussian, percentile, or elite scarcity normalization is applied.
 
 Some modifier fields are currently placeholders until the resolver exposes exact modifier values.
 
@@ -104,6 +122,13 @@ Review these first:
 - `rating-lab-award-winners-*.csv`
 - `rating-lab-anomalies-*.csv`
 - `rating-lab-source-availability-*.csv`
+- `rating-lab-rating-breakdown-*.csv`
+- `rating-lab-source-matches-*.csv`
+- `rating-lab-transfermarkt-baselines-*.csv`
+- `rating-lab-transfermarkt-multi-season-*.csv`
+- `rating-lab-top-100-raw-evidence-*.csv`
+- `rating-lab-low-confidence-elites-*.csv`
+- `rating-lab-distribution-summary-*.csv`
 - `rating-lab-rating-distribution-buckets-*.csv`
 - `rating-lab-rating-distribution-groups-*.csv`
 
@@ -156,7 +181,7 @@ If the estimated preview import exceeds conservative Neon Free limits, use Stage
 
 The lab has a local-only source registry for Fjelstul, Transfermarkt, EA historical, ClubElo, FBref, StatsBomb, FiveThirtyEight, annual awards, manual anchors, and 7a0 manual references. Adapters do not download data. Missing optional local source directories produce source availability warnings.
 
-Transfermarkt is profile/baseline-ready but report-only in this spike. Use:
+Transfermarkt is the first optional source that can affect final RAW_EVIDENCE ratings in this spike. Use:
 
 ```bash
 pnpm db:rating-lab:profile-transfermarkt
@@ -164,6 +189,14 @@ pnpm db:rating-lab:profile-sources
 ```
 
 Transfermarkt market value is converted into percentile baselines inside comparable peer groups; raw market value is never treated as a rating. Multi-season helpers report same-season, previous-season, two-seasons-back, three-seasons-back, weighted score, and trend direction.
+
+The first active blend is HIGH Transfermarkt plus Fjelstul World Cup. Default weights are 65% Transfermarkt and 35% Fjelstul. Missing, MEDIUM, or LOW Transfermarkt data falls back to 100% Fjelstul. Manual anchors/floors remain protective and 7a0 remains comparison-only.
+
+The four-year cycle is based on the previous World Cup cycle, for example 2026 uses `2023, 2024, 2025, 2026`. Young players are not penalized for under-age missing seasons. Established players with missing expected seasons lose confidence. Low minutes/appearances reduce availability and confidence, with a small configurable score penalty. The lab does not infer injuries explicitly.
+
+Host labels in reports and preview resolve from Fjelstul host metadata before falling back to `UNKNOWN HOST`; multi-country hosts are rendered as joined readable labels.
+
+Local debug previews can show `debugRealName` when configured. Reports include both `debugRealName` and `publicDisplayName`. Production/public card DTOs remain public-safe and must not expose real/source names.
 
 7a0 manual references are comparison-only by default. They are not rating floors. If an iconic player needs protection, add an explicit manual anchor with its own reason.
 

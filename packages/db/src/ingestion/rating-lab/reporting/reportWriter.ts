@@ -28,8 +28,16 @@ import { countBy } from "../utils.js";
 export { detectAnomalies } from "../domain/evaluation/anomalyDetection.js";
 
 const CSV_COLUMNS = [
+  "cardKey",
   "internalRawName",
   "publicPlaceholderName",
+  "debugRealName",
+  "publicDisplayName",
+  "isLocalDebugOnly",
+  "hostCountryLabel",
+  "hostCountryCode",
+  "hostResolutionSource",
+  "hostResolutionWarning",
   "worldCupYear",
   "nation",
   "position",
@@ -58,6 +66,7 @@ const CSV_COLUMNS = [
   "warnings",
   "reasons",
   "formulaVersion",
+  "formulaConfigPath",
   "selectedDistributionStrategy",
   "rawEvidenceOverall",
   "selectedOverall",
@@ -74,8 +83,41 @@ const CSV_COLUMNS = [
   "minutesTrend",
   "trendAdjustment",
   "worldCupPerformanceRating",
+  "worldCupRating",
   "worldCupPerformanceSource",
   "worldCupPerformanceConfidence",
+  "transfermarktRating",
+  "transfermarktEffectiveWeight",
+  "worldCupEffectiveWeight",
+  "finalBlendedRating",
+  "transfermarktMatchConfidence",
+  "transfermarktCoverage",
+  "transfermarktEligibleYears",
+  "transfermarktAvailableYears",
+  "tmOldestYear",
+  "tmTwoBackYear",
+  "tmPreviousYear",
+  "tmWorldCupYear",
+  "tmOldestRating",
+  "tmTwoBackRating",
+  "tmPreviousRating",
+  "tmWorldCupYearRating",
+  "tmSameSeasonScore",
+  "tmPreviousSeasonScore",
+  "tmTwoSeasonsBackScore",
+  "tmThreeSeasonsBackScore",
+  "tmWeightedMultiSeasonScore",
+  "tmMarketValuePercentile",
+  "tmAppearanceVolumeScore",
+  "tmGoalContributionScore",
+  "tmAssistContributionScore",
+  "tmLeagueStrengthScore",
+  "tmClubStrengthScore",
+  "tmAgeCurveScore",
+  "tmMarketValueTrend",
+  "tmProductionTrend",
+  "tmMinutesTrend",
+  "tmTrendAdjustment",
   "leagueStrengthAdjustment",
   "clubStrengthAdjustment",
   "ageCurveAdjustment",
@@ -99,16 +141,33 @@ export function toCardReport({
   sevenAZero?: SevenAZeroComparison;
 }): RatingLabCardReport {
   const sevenAZeroDelta = sevenAZero ? resolved.overall - sevenAZero.rating : null;
-  const baseEvidence = resolved.evidence.find((evidence) => evidence.source === "FJELSTUL_GENERATED");
+  const baseEvidence = resolved.evidence.find(
+    (evidence) => evidence.source === "FJELSTUL_WORLD_CUP" || evidence.source === "FJELSTUL_GENERATED"
+  );
   const manualFloorApplied = resolved.evidence.some((evidence) => evidence.source === "MANUAL_CURATED");
   const awardFloorApplied = resolved.reasons.some((reason) => reason.includes("award winner floor"));
   const sourceTypes = [...new Set(resolved.evidence.map((evidence) => evidence.source))].join("|");
   const breakdown = resolved.breakdown;
   const multiSeason = breakdown?.multiSeasonAbility;
+  const transfermarktSource = breakdown?.appliedSources.find((source) => source.sourceKey === "TRANSFERMARKT") ??
+    breakdown?.ignoredSources.find((source) => source.sourceKey === "TRANSFERMARKT");
+  const tmSignals = transfermarktSource?.signals ?? {};
 
   return {
+    cardKey: `${context.identityKey}:${context.worldCupYear}`,
     internalRawName: context.internalRawName,
     publicPlaceholderName: context.publicPlaceholderName,
+    debugRealName: context.debugRealName ?? context.internalRawName,
+    publicDisplayName: context.publicDisplayName ?? context.publicPlaceholderName,
+    isLocalDebugOnly: Boolean(context.isLocalDebugOnly ?? true),
+    hostCountryLabel: context.hostCountryLabel ?? (context.host ? context.nation : "UNKNOWN HOST"),
+    hostCountryCode: context.hostCountryCode ?? (context.host ? context.nation : "UNK"),
+    hostResolutionSource: context.hostResolutionSource ?? (context.host ? "host_countries.csv" : "fallback"),
+    hostResolutionWarning: context.hostResolutionWarning === undefined
+      ? context.host
+        ? null
+        : `host_country_unresolved:${context.worldCupYear}`
+      : context.hostResolutionWarning,
     worldCupYear: context.worldCupYear,
     nation: context.nation,
     position: context.position,
@@ -138,6 +197,7 @@ export function toCardReport({
     warnings: resolved.warnings.map((warning) => warning.code).join("|"),
     reasons: resolved.reasons.join("|"),
     formulaVersion: breakdown?.formulaVersion ?? "unknown",
+    formulaConfigPath: breakdown?.formulaConfigPath ?? null,
     selectedDistributionStrategy: breakdown?.selectedDistributionStrategy ?? "RAW_EVIDENCE",
     rawEvidenceOverall: breakdown?.rawEvidenceOverall ?? resolved.overall,
     selectedOverall: breakdown?.selectedOverall ?? resolved.overall,
@@ -154,8 +214,41 @@ export function toCardReport({
     minutesTrend: multiSeason?.minutesTrend ?? "UNKNOWN",
     trendAdjustment: breakdown?.trendAdjustment ?? 0,
     worldCupPerformanceRating: breakdown?.worldCupPerformanceRating ?? null,
+    worldCupRating: breakdown?.worldCupPerformanceRating ?? null,
     worldCupPerformanceSource: breakdown?.worldCupPerformanceSource ?? null,
     worldCupPerformanceConfidence: breakdown?.worldCupPerformanceConfidence ?? "NONE",
+    transfermarktRating: breakdown?.transfermarktRating ?? null,
+    transfermarktEffectiveWeight: breakdown?.transfermarktEffectiveWeight ?? 0,
+    worldCupEffectiveWeight: breakdown?.worldCupEffectiveWeight ?? 0,
+    finalBlendedRating: breakdown?.finalBlendedRating ?? resolved.overall,
+    transfermarktMatchConfidence: breakdown?.transfermarktMatchConfidence ?? "NONE",
+    transfermarktCoverage: breakdown?.transfermarktCoverage ?? null,
+    transfermarktEligibleYears: stringSignal(tmSignals, "transfermarktEligibleYears"),
+    transfermarktAvailableYears: stringSignal(tmSignals, "transfermarktAvailableYears"),
+    tmOldestYear: numericSignal(tmSignals, "tmOldestYear"),
+    tmTwoBackYear: numericSignal(tmSignals, "tmTwoBackYear"),
+    tmPreviousYear: numericSignal(tmSignals, "tmPreviousYear"),
+    tmWorldCupYear: numericSignal(tmSignals, "tmWorldCupYear"),
+    tmOldestRating: numericSignal(tmSignals, "tmOldestRating"),
+    tmTwoBackRating: numericSignal(tmSignals, "tmTwoBackRating"),
+    tmPreviousRating: numericSignal(tmSignals, "tmPreviousRating"),
+    tmWorldCupYearRating: numericSignal(tmSignals, "tmWorldCupYearRating"),
+    tmSameSeasonScore: numericSignal(tmSignals, "tmWorldCupYearRating"),
+    tmPreviousSeasonScore: numericSignal(tmSignals, "tmPreviousRating"),
+    tmTwoSeasonsBackScore: numericSignal(tmSignals, "tmTwoBackRating"),
+    tmThreeSeasonsBackScore: numericSignal(tmSignals, "tmOldestRating"),
+    tmWeightedMultiSeasonScore: numericSignal(tmSignals, "tmWeightedMultiSeasonScore"),
+    tmMarketValuePercentile: numericSignal(tmSignals, "marketValuePercentile"),
+    tmAppearanceVolumeScore: numericSignal(tmSignals, "appearanceVolumeScore"),
+    tmGoalContributionScore: numericSignal(tmSignals, "goalContributionScore"),
+    tmAssistContributionScore: numericSignal(tmSignals, "assistContributionScore"),
+    tmLeagueStrengthScore: numericSignal(tmSignals, "leagueStrengthScore"),
+    tmClubStrengthScore: numericSignal(tmSignals, "clubStrengthScore"),
+    tmAgeCurveScore: numericSignal(tmSignals, "ageCurveScore"),
+    tmMarketValueTrend: stringSignal(tmSignals, "tmMarketValueTrend", "UNKNOWN"),
+    tmProductionTrend: stringSignal(tmSignals, "tmProductionTrend", "UNKNOWN"),
+    tmMinutesTrend: stringSignal(tmSignals, "tmMinutesTrend", "UNKNOWN"),
+    tmTrendAdjustment: numericSignal(tmSignals, "tmTrendAdjustment") ?? 0,
     leagueStrengthAdjustment: breakdown?.leagueStrengthAdjustment ?? 0,
     clubStrengthAdjustment: breakdown?.clubStrengthAdjustment ?? 0,
     ageCurveAdjustment: breakdown?.ageCurveAdjustment ?? 0,
@@ -221,6 +314,7 @@ export function buildReports({
 
   return {
     summary,
+    allCards: [...cards],
     icons,
     randomSample: [...cards]
       .sort((left, right) => left.publicPlaceholderName.localeCompare(right.publicPlaceholderName))
@@ -250,6 +344,7 @@ export async function writeRatingLabReports({
   const files = [
     [`rating-lab-summary-${timestamp}.json`, `${JSON.stringify(reports.summary, null, 2)}\n`],
     ["latest-summary.json", `${JSON.stringify(reports.summary, null, 2)}\n`],
+    [`rating-lab-rating-breakdown-${timestamp}.csv`, toCsv(reports.allCards)],
     [`rating-lab-icons-${timestamp}.csv`, toCsv(reports.icons)],
     [`rating-lab-random-sample-${timestamp}.csv`, toCsv(reports.randomSample)],
     [`rating-lab-top-by-tournament-${timestamp}.csv`, toCsv(reports.topByTournament)],
@@ -259,8 +354,14 @@ export async function writeRatingLabReports({
     [`rating-lab-seven-a-zero-manual-references-${timestamp}.csv`, manualReferencesToCsv(reports.sevenAZeroManualReferences)],
     [`rating-lab-anomalies-${timestamp}.csv`, toCsv(reports.anomalies)],
     [`rating-lab-source-availability-${timestamp}.csv`, sourceAvailabilityToCsv(reports.sourceAvailability)],
+    [`rating-lab-source-matches-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktMatchConfidence !== "NONE"))],
+    [`rating-lab-transfermarkt-baselines-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktRating !== null))],
+    [`rating-lab-transfermarkt-multi-season-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.tmWeightedMultiSeasonScore !== null))],
+    [`rating-lab-top-100-raw-evidence-${timestamp}.csv`, toCsv([...reports.allCards].sort((left, right) => right.rawEvidenceOverall - left.rawEvidenceOverall).slice(0, 100))],
+    [`rating-lab-low-confidence-elites-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.overall >= 90 && card.confidence !== "HIGH"))],
     [`rating-lab-rating-distribution-buckets-${timestamp}.csv`, distributionBucketsToCsv(reports.distributionBuckets)],
-    [`rating-lab-rating-distribution-groups-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)]
+    [`rating-lab-rating-distribution-groups-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)],
+    [`rating-lab-distribution-summary-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)]
   ] as const;
 
   const paths: string[] = [];
@@ -327,6 +428,8 @@ function buildSummary({
   const summary: RatingLabSummary = {
     generatedAt: new Date().toISOString(),
     formulaVersion: formulaConfig?.version ?? cards[0]?.formulaVersion,
+    formulaConfigPath: formulaConfig?.formulaConfigPath ?? cards[0]?.formulaConfigPath ?? null,
+    formulaConfigFallbackUsed: formulaConfig?.formulaConfigFallbackUsed ?? false,
     selectedDistributionStrategy: formulaConfig?.ratingDistribution.selectedStrategy ?? cards[0]?.selectedDistributionStrategy,
     sourceDir,
     sourceAvailability: [...(sourceAvailability ?? [])],
@@ -444,17 +547,34 @@ function manualReferencesToCsv(rows: readonly SevenAZeroManualReferenceResult[])
   return `${lines.join("\n")}\n`;
 }
 
-function csvCell(value: string | number | null): string {
-  if (value === null) return "";
+function csvCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) return "";
   const text = String(value);
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+function numericSignal(signals: Record<string, number | string | null>, key: string): number | null {
+  const value = signals[key];
+  return typeof value === "number" ? value : null;
+}
+
+function stringSignal(signals: Record<string, number | string | null>, key: string, fallback = ""): string {
+  const value = signals[key];
+  return typeof value === "string" ? value : fallback;
+}
+
 function toSnapshot(card: RatingLabCardReport): RatingLabCardSnapshot {
   return {
-    key: `${card.internalRawName}:${card.worldCupYear}:${card.nation}`,
+    key: card.cardKey,
     internalRawName: card.internalRawName,
     publicPlaceholderName: card.publicPlaceholderName,
+    debugRealName: card.debugRealName,
+    publicDisplayName: card.publicDisplayName,
+    isLocalDebugOnly: card.isLocalDebugOnly,
+    hostCountryLabel: card.hostCountryLabel,
+    hostCountryCode: card.hostCountryCode,
+    hostResolutionSource: card.hostResolutionSource,
+    hostResolutionWarning: card.hostResolutionWarning,
     worldCupYear: card.worldCupYear,
     nation: card.nation,
     position: card.position,
@@ -469,6 +589,12 @@ function toSnapshot(card: RatingLabCardReport): RatingLabCardSnapshot {
     selectedOverall: card.selectedOverall,
     seasonAbilityBaseline: card.seasonAbilityBaseline,
     worldCupPerformanceRating: card.worldCupPerformanceRating,
+    transfermarktRating: card.transfermarktRating,
+    transfermarktEffectiveWeight: card.transfermarktEffectiveWeight,
+    worldCupEffectiveWeight: card.worldCupEffectiveWeight,
+    finalBlendedRating: card.finalBlendedRating,
+    transfermarktMatchConfidence: card.transfermarktMatchConfidence,
+    transfermarktCoverage: card.transfermarktCoverage,
     trendAdjustment: card.trendAdjustment,
     capsApplied: card.capsApplied,
     evidenceSummary: card.evidenceSummary,

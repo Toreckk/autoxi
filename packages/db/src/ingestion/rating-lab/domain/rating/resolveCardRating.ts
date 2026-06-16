@@ -3,6 +3,7 @@ import { nationMatches } from "../evaluation/benchmarkRanges.js";
 import { estimateOverallFromStats } from "./estimateOverallFromStats.js";
 import { generateOverallFromFjelstulContext, awardFloorForAwards } from "./generateOverallFromFjelstulContext.js";
 import { generateStatsFromOverall } from "./generateStatsFromOverall.js";
+import { blendAppliedRatings } from "./blendAppliedRatings.js";
 import { SOURCE_PRIORITY } from "./sourcePriority.js";
 import { prePhase1BCalibrationConfig } from "./ratingFormulaPresets.js";
 import type { RatingFormulaConfig } from "./ratingFormulaConfig.js";
@@ -12,7 +13,8 @@ import type {
   RatingEvidence,
   RatingSourcesInput,
   RatingWarning,
-  ResolvedRating
+  ResolvedRating,
+  AppliedRatingSource
 } from "../types.js";
 import { clamp, normalizeName, roundClamp } from "../../utils.js";
 
@@ -25,17 +27,44 @@ export function resolveCardRating(
   const warnings: RatingWarning[] = [];
   const generated = generateOverallFromFjelstulContext(cardContext, config);
   const generatedOverall = generated.overall;
-  let overall = generated.overall;
+  const transfermarktSource = resolveTransfermarktAppliedSource(sources.transfermarktRatings?.[0], config);
+  const hasActiveTransfermarkt = transfermarktSource?.affectsRating === true && transfermarktSource.effectiveWeight > 0;
+  const worldCupAppliedSource: AppliedRatingSource = {
+    sourceKey: "FJELSTUL_WORLD_CUP",
+    rating: generatedOverall,
+    baseWeight: hasActiveTransfermarkt
+      ? config.sourceBlendWeights.worldCupWithHighConfidenceTransfermarkt
+      : config.sourceBlendWeights.worldCupFallbackOnly,
+    confidence: generated.confidence,
+    coverage: 1,
+    effectiveWeight: hasActiveTransfermarkt
+      ? config.sourceBlendWeights.worldCupWithHighConfidenceTransfermarkt
+      : config.sourceBlendWeights.worldCupFallbackOnly,
+    affectsRating: true,
+    reasons: generated.reasons,
+    warnings: []
+  };
+  const blended = blendAppliedRatings([worldCupAppliedSource, ...(transfermarktSource ? [transfermarktSource] : [])]);
+  let overall = blended.finalOverallBeforeCaps;
   let confidence = generated.confidence;
-  let primarySource: ResolvedRating["primarySource"] = "FJELSTUL_GENERATED";
-  const reasons = [...generated.reasons];
+  let primarySource: ResolvedRating["primarySource"] = hasActiveTransfermarkt ? "MIXED" : "FJELSTUL_GENERATED";
+  const reasons = [...generated.reasons, ...(hasActiveTransfermarkt ? ["Transfermarkt/Fjelstul weighted source blend applied."] : [])];
 
   evidence.push({
-    source: "FJELSTUL_GENERATED",
+    source: "FJELSTUL_WORLD_CUP",
     confidence: generated.confidence,
     value: generated.overall,
     reason: generated.reasons.join("; ")
   });
+  if (transfermarktSource) {
+    evidence.push({
+      source: "TRANSFERMARKT",
+      confidence: transfermarktSource.confidence,
+      value: transfermarktSource.rating,
+      reason: transfermarktSource.reasons.join("; ")
+    });
+    if (hasActiveTransfermarkt && transfermarktSource.confidence === "HIGH") confidence = "HIGH";
+  }
 
   const manual = findManual(cardContext, sources.manualCurated ?? []);
   if (manual) {
@@ -153,13 +182,24 @@ export function resolveCardRating(
     : [];
   const breakdown = {
     formulaVersion: config.version,
+    formulaConfigPath: config.formulaConfigPath ?? null,
     selectedDistributionStrategy: config.ratingDistribution.selectedStrategy,
     rawEvidenceOverall: overall,
     selectedOverall: overall,
-    seasonAbilityBaseline: null,
-    seasonAbilitySource: null,
-    seasonAbilityConfidence: "NONE" as const,
-    multiSeasonAbility: null,
+    seasonAbilityBaseline: transfermarktSource?.rating ?? null,
+    seasonAbilitySource: transfermarktSource ? "TRANSFERMARKT" as const : null,
+    seasonAbilityConfidence: transfermarktSource?.confidence ?? "NONE" as const,
+    multiSeasonAbility: transfermarktSource ? {
+      sameSeasonScore: numericSignal(transfermarktSource, "tmWorldCupYearRating"),
+      previousSeasonScore: numericSignal(transfermarktSource, "tmPreviousRating"),
+      twoSeasonsBackScore: numericSignal(transfermarktSource, "tmTwoBackRating"),
+      threeSeasonsBackScore: numericSignal(transfermarktSource, "tmOldestRating"),
+      weightedMultiSeasonScore: numericSignal(transfermarktSource, "tmWeightedMultiSeasonScore"),
+      marketValueTrend: stringSignal(transfermarktSource, "tmMarketValueTrend", "UNKNOWN"),
+      productionTrend: stringSignal(transfermarktSource, "tmProductionTrend", "UNKNOWN"),
+      minutesTrend: stringSignal(transfermarktSource, "tmMinutesTrend", "UNKNOWN"),
+      trendAdjustment: numericSignal(transfermarktSource, "tmTrendAdjustment") ?? 0
+    } : null,
     worldCupPerformanceRating: generatedOverall,
     worldCupPerformanceSource: "FJELSTUL_WORLD_CUP" as const,
     worldCupPerformanceConfidence: generated.confidence,
@@ -173,12 +213,20 @@ export function resolveCardRating(
     capsApplied: generated.reasons.filter((reason) => reason.includes("cap")),
     bonusesApplied: generated.reasons.filter((reason) => !reason.includes("cap")),
     warningsApplied: warningCodes,
-    finalOverallBeforeCaps: generatedOverall,
+    finalOverallBeforeCaps: blended.finalOverallBeforeCaps,
     finalOverall: overall,
     individualStatsSource: externalStats ? primarySource === "EA_HISTORICAL" ? "EA_HISTORICAL" as const : "TRANSFERMARKT" as const : "GENERATED" as const,
     individualStatsConfidence: confidence,
     evidence: sortEvidence(evidence),
     comparisonReferences,
+    appliedSources: blended.appliedSources,
+    ignoredSources: blended.ignoredSources,
+    transfermarktRating: transfermarktSource?.rating ?? null,
+    transfermarktMatchConfidence: transfermarktSource?.confidence ?? "NONE" as const,
+    transfermarktCoverage: transfermarktSource?.coverage ?? null,
+    transfermarktEffectiveWeight: transfermarktSource?.effectiveWeight ?? 0,
+    worldCupEffectiveWeight: worldCupAppliedSource.effectiveWeight,
+    finalBlendedRating: blended.finalOverallBeforeCaps,
     warnings: warningCodes
   };
 
@@ -195,6 +243,40 @@ export function resolveCardRating(
     reasons,
     breakdown
   };
+}
+
+function resolveTransfermarktAppliedSource(
+  source: AppliedRatingSource | undefined,
+  config: RatingFormulaConfig
+): AppliedRatingSource | undefined {
+  if (!source) return undefined;
+  const baseWeight =
+    source.confidence === "HIGH"
+      ? config.sourceBlendWeights.highConfidenceTransfermarkt
+      : source.confidence === "MEDIUM"
+        ? config.sourceBlendWeights.mediumConfidenceTransfermarkt
+        : config.sourceBlendWeights.lowConfidenceTransfermarkt;
+  const affectsRating =
+    source.confidence === "HIGH" &&
+    source.coverage >= config.transfermarkt.minimumCoverageToApply &&
+    baseWeight > 0 &&
+    source.affectsRating;
+  return {
+    ...source,
+    baseWeight,
+    effectiveWeight: affectsRating ? baseWeight * config.transfermarkt.confidenceMultipliers[source.confidence] : 0,
+    affectsRating
+  };
+}
+
+function numericSignal(source: AppliedRatingSource, key: string): number | null {
+  const value = source.signals?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+function stringSignal<T extends string>(source: AppliedRatingSource, key: string, fallback: T): T {
+  const value = source.signals?.[key];
+  return typeof value === "string" ? value as T : fallback;
 }
 
 function findManual(

@@ -56,6 +56,12 @@ pnpm db:rating-lab:profile-sources
 pnpm db:rating-lab:profile-transfermarkt
 ```
 
+Advanced formula override:
+
+```bash
+pnpm db:rating-lab -- --formula-config data/rating-formulas/my-test.json
+```
+
 Windows direct fallback:
 
 ```powershell
@@ -97,7 +103,16 @@ Guardrails:
 
 The source registry is local-only. It tracks Fjelstul, Transfermarkt, EA historical, ClubElo, FBref, StatsBomb, FiveThirtyEight, annual awards, manual anchors, and 7a0 manual references.
 
-Transfermarkt is currently profile/baseline-ready but report-only. It profiles local CSVs, supports matching tests, and converts raw market/activity data into percentile baselines. Raw market value is never used as an overall rating.
+Transfermarkt is now the first optional source that can affect RAW_EVIDENCE ratings. A HIGH-confidence Transfermarkt match with enough four-year cycle coverage becomes an applied source and blends with the Fjelstul World Cup fallback. MEDIUM/LOW Transfermarkt matches remain report-only by default.
+
+The editable formula file is `data/rating-formulas/pre-phase-1b-raw-evidence.json`. Zod validates required fields, 0..1 weights, annual signal and season-window sums, 7a0 comparison-only safety, preview name flags, age thresholds, availability thresholds, and distribution buckets.
+
+The default active source blend is:
+
+- HIGH Transfermarkt: 65% Transfermarkt + 35% Fjelstul World Cup.
+- Missing/MEDIUM/LOW Transfermarkt: 100% Fjelstul World Cup fallback.
+
+The Transfermarkt window uses the previous World Cup cycle, for example `1979, 1980, 1981, 1982` for 1982. Under-age seasons are not expected, young players are not penalized for seasons they could not realistically play, and established players with missing expected seasons lose confidence rather than taking an automatic rating crash. Low minutes/appearances affect availability, confidence, and a small season-score penalty. There is no explicit injury inference in this pass.
 
 EA, ClubElo, FBref, StatsBomb, FiveThirtyEight, and annual award adapters are skeletons. They never download data and currently report unavailable or unimplemented status until local files and dependency rules are approved.
 
@@ -105,7 +120,9 @@ EA, ClubElo, FBref, StatsBomb, FiveThirtyEight, and annual award adapters are sk
 
 ## Rating Breakdown
 
-Every card report now includes `formulaVersion`, `selectedDistributionStrategy`, raw/selected overall, season ability placeholders, World Cup performance rating, adjustments, caps, evidence summary, and comparison summary.
+Every card report now includes `formulaVersion`, `formulaConfigPath`, `selectedDistributionStrategy`, raw/selected overall, source blend weights, Transfermarkt rating/coverage/confidence, World Cup rating, season-window diagnostics, caps, evidence summary, and comparison summary.
+
+Reports also separate `debugRealName` from `publicDisplayName`. Local HTML/debug previews can show real/source names when `preview.showRealNamesInLocalPreview` is true. Public DTOs must continue to use public-safe display names and must not expose `debugRealName`.
 
 The default formula preset is `pre-phase-1b-calibration`, with `RAW_EVIDENCE` selected. Alternative strategy configs can be reported before any percentile or elite-scarcity curve is allowed to affect final ratings.
 

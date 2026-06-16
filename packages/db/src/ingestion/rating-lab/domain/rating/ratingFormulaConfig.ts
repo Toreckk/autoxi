@@ -2,6 +2,67 @@ import type { RatingDistributionStrategy, RatingSourceKey } from "../types.js";
 
 export type RatingFormulaConfig = {
   version: string;
+  selectedStrategy: RatingDistributionStrategy;
+  formulaConfigPath?: string;
+  formulaConfigFallbackUsed?: boolean;
+  sourceBlendWeights: {
+    highConfidenceTransfermarkt: number;
+    mediumConfidenceTransfermarkt: number;
+    lowConfidenceTransfermarkt: number;
+    worldCupWithHighConfidenceTransfermarkt: number;
+    worldCupFallbackOnly: number;
+  };
+  transfermarkt: {
+    minimumCoverageToApply: number;
+    seasonWindow: {
+      enabled: boolean;
+      usePreviousWorldCupCycle: boolean;
+      weights: {
+        oldest: number;
+        twoBack: number;
+        previous: number;
+        worldCupYear: number;
+      };
+    };
+    annualSignalWeights: {
+      marketValuePercentile: number;
+      appearanceVolume: number;
+      goalContribution: number;
+      assistContribution: number;
+      clubStrength: number;
+      leagueStrength: number;
+      ageCurve: number;
+    };
+    confidenceMultipliers: Record<"HIGH" | "MEDIUM" | "LOW", number>;
+  };
+  missingSeasonRules: {
+    normalizeWeightsOverAvailableEligibleSeasons: boolean;
+    underAgeSeasonIsNotExpected: boolean;
+    underAgeCutoff: number;
+    youngPlayerAgeMax: number;
+    establishedPlayerAgeMin: number;
+    missingExpectedSeasonAffects: "confidence" | "seasonScoreAndConfidence";
+    missingExpectedSeasonRatingPenalty: number;
+  };
+  availabilityRules: {
+    enabled: boolean;
+    useMinutesPlayed: boolean;
+    useAppearancesWhenMinutesMissing: boolean;
+    lowAvailabilityAffects: "confidence" | "seasonScoreAndConfidence";
+    minimumStrongSeasonMinutes: number;
+    minimumEliteSeasonMinutes: number;
+    lowMinutesScorePenaltyMax: number;
+    lowMinutesConfidencePenaltyMax: number;
+  };
+  preview: {
+    showRealNamesInLocalPreview: boolean;
+    showMaskedNamesInPublicPreview: boolean;
+  };
+  distributionDiagnostics: {
+    enabled: boolean;
+    warnOnly: boolean;
+    buckets: readonly number[];
+  };
   sourcePriority: {
     seasonAbility: readonly RatingSourceKey[];
     worldCupPerformance: readonly RatingSourceKey[];

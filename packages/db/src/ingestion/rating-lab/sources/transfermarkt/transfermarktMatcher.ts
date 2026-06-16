@@ -21,7 +21,7 @@ export function matchTransfermarktPlayer(
         score += 45;
         reasons.push("token_name");
       }
-      if (record.nation && normalizeName(record.nation) === normalizeName(context.nation)) {
+      if (record.nation && nationMatches(record.nation, context.nation)) {
         score += 20;
         reasons.push("nation");
       }
@@ -40,6 +40,64 @@ export function matchTransfermarktPlayer(
     .filter((candidate) => candidate.score >= 45)
     .sort((left, right) => right.score - left.score);
 }
+
+function nationMatches(left: string, right: string): boolean {
+  const leftCode = countryCodeFor(left);
+  const rightCode = countryCodeFor(right);
+  return leftCode !== null && rightCode !== null && leftCode === rightCode;
+}
+
+function countryCodeFor(value: string): string | null {
+  const normalized = normalizeName(value);
+  if (!normalized) return null;
+  const direct = COUNTRY_CODE_BY_NORMALIZED_NAME[normalized];
+  if (direct) return direct;
+  if (normalized.length === 3) return normalized.toUpperCase();
+  return null;
+}
+
+const COUNTRY_CODE_BY_NORMALIZED_NAME: Record<string, string> = {
+  argentina: "ARG",
+  australia: "AUS",
+  austria: "AUT",
+  belgium: "BEL",
+  brazil: "BRA",
+  cameroon: "CMR",
+  canada: "CAN",
+  chile: "CHL",
+  china: "CHN",
+  colombia: "COL",
+  "costa rica": "CRI",
+  croatia: "HRV",
+  denmark: "DNK",
+  ecuador: "ECU",
+  england: "ENG",
+  france: "FRA",
+  germany: "DEU",
+  ghana: "GHA",
+  italy: "ITA",
+  japan: "JPN",
+  mexico: "MEX",
+  morocco: "MAR",
+  netherlands: "NLD",
+  nigeria: "NGA",
+  norway: "NOR",
+  panama: "PAN",
+  poland: "POL",
+  portugal: "PRT",
+  qatar: "QAT",
+  russia: "RUS",
+  senegal: "SEN",
+  serbia: "SRB",
+  "south korea": "KOR",
+  spain: "ESP",
+  sweden: "SWE",
+  switzerland: "CHE",
+  tunisia: "TUN",
+  "united states": "USA",
+  uruguay: "URY",
+  wales: "WAL"
+};
 
 function tokenOverlapScore(left: string, right: string): number {
   const leftTokens = new Set(left.split(" ").filter(Boolean));

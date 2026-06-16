@@ -34,7 +34,10 @@ import { evaluatePairwiseCheck } from "./domain/evaluation/pairwiseChecks.js";
 import { buildReports, detectAnomalies, toCardReport, writeRatingLabReports } from "./reporting/reportWriter.js";
 import { renderRatingLabPreviewHtml, writeRatingLabPreviewHtml } from "./reporting/previewHtmlWriter.js";
 import { resolveCardRating } from "./domain/rating/resolveCardRating.js";
+import { blendAppliedRatings } from "./domain/rating/blendAppliedRatings.js";
+import { RatingFormulaJsonSchema } from "./domain/rating/ratingFormulaConfig.schema.js";
 import { loadRatingFormulaConfig, mergeRatingFormulaConfig } from "./domain/rating/ratingFormulaConfig.js";
+import { loadRatingFormulaConfigFromFile } from "./config/loadRatingFormulaConfig.js";
 import { prePhase1BCalibrationConfig } from "./domain/rating/ratingFormulaPresets.js";
 import { runRatingLabWriteDevPreview } from "./cli/runRatingLabWriteDevPreview.js";
 import { resolveRatingLabPresetOptions, runRatingLab } from "./cli/runRatingLab.js";
@@ -50,7 +53,11 @@ import { profileRegisteredSources } from "./sources/sourceRegistry.js";
 import { profileTransfermarktSource } from "./sources/transfermarkt/transfermarktProfiler.js";
 import { matchTransfermarktPlayer } from "./sources/transfermarkt/transfermarktMatcher.js";
 import { resolveTransfermarktSeasonBaseline } from "./sources/transfermarkt/transfermarktSeasonBaseline.js";
-import { resolveTransfermarktMultiSeasonBaseline } from "./sources/transfermarkt/transfermarktMultiSeasonBaseline.js";
+import {
+  resolveTransfermarktMultiSeasonBaseline,
+  resolveTransfermarktRating,
+  worldCupCycleYears
+} from "./sources/transfermarkt/transfermarktMultiSeasonBaseline.js";
 import type {
   BenchmarkResult,
   BenchmarkTarget,
@@ -1012,6 +1019,96 @@ describe("rating lab spike", () => {
     expect(profile.files[0]).toMatchObject({ minYear: 1981, maxYear: 1982 });
   });
 
+  it("loads and validates the default JSON formula config with path metadata", async () => {
+    const config = await loadRatingFormulaConfigFromFile();
+
+    expect(config.version).toBe("pre-phase-1b-raw-evidence-v1");
+    expect(config.ratingDistribution.selectedStrategy).toBe("RAW_EVIDENCE");
+    expect(config.formulaConfigPath).toContain("data");
+    expect(config.formulaConfigFallbackUsed).toBe(false);
+  });
+
+  it("rejects invalid formula weights and ambiguous preview name settings", () => {
+    const invalid = formulaJsonFixture({
+      transfermarkt: {
+        ...formulaJsonFixture().transfermarkt,
+        annualSignalWeights: {
+          ...formulaJsonFixture().transfermarkt.annualSignalWeights,
+          marketValuePercentile: 0.25
+        }
+      },
+      preview: {
+        showRealNamesInLocalPreview: true,
+        showMaskedNamesInPublicPreview: true
+      }
+    });
+
+    const result = RatingFormulaJsonSchema.safeParse(invalid);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message).join("|")).toContain("annualSignalWeights must sum to 1");
+    expect(result.error?.issues.map((issue) => issue.message).join("|")).toContain("cannot both be true");
+  });
+
+  it("rejects 7a0 when configured to affect ratings", () => {
+    const result = RatingFormulaJsonSchema.safeParse(
+      formulaJsonFixture({
+        comparisonOnlySources: {
+          sevenAZeroManual: {
+            enabled: true,
+            affectsRating: true,
+            defaultTolerance: 3,
+            warningDelta: 6
+          }
+        }
+      })
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("uses normalized active source weights when blending applied ratings", () => {
+    const blended = blendAppliedRatings([
+      {
+        sourceKey: "TRANSFERMARKT",
+        rating: 96,
+        baseWeight: 0.65,
+        confidence: "HIGH",
+        coverage: 1,
+        effectiveWeight: 0.65,
+        affectsRating: true,
+        reasons: [],
+        warnings: []
+      },
+      {
+        sourceKey: "FJELSTUL_WORLD_CUP",
+        rating: 82,
+        baseWeight: 0.35,
+        confidence: "MEDIUM",
+        coverage: 1,
+        effectiveWeight: 0.35,
+        affectsRating: true,
+        reasons: [],
+        warnings: []
+      },
+      {
+        sourceKey: "SEVEN_A_ZERO_MANUAL",
+        rating: 99,
+        baseWeight: 0,
+        confidence: "HIGH",
+        coverage: 1,
+        effectiveWeight: 0,
+        affectsRating: false,
+        reasons: [],
+        warnings: []
+      }
+    ]);
+
+    expect(blended.finalOverallBeforeCaps).toBe(91);
+    expect(blended.appliedSources.map((source) => source.sourceKey)).toEqual(["TRANSFERMARKT", "FJELSTUL_WORLD_CUP"]);
+    expect(blended.ignoredSources.map((source) => source.sourceKey)).toEqual(["SEVEN_A_ZERO_MANUAL"]);
+  });
+
   it("matches Transfermarkt candidates at high, medium, and low confidence", () => {
     const context = cardContext({ internalRawName: "Diego Armando Maradona", nation: "ARG", worldCupYear: 1982 });
     const candidates = matchTransfermarktPlayer(context, [
@@ -1040,6 +1137,130 @@ describe("rating lab spike", () => {
     expect(baseline.score).toBeGreaterThan(90);
     expect(multiSeason.marketValueTrend).toBe("RISING");
     expect(multiSeason.trendAdjustment).toBe(1);
+  });
+
+  it("creates a high-confidence Transfermarkt rating from configured World Cup cycle weights", () => {
+    const context = cardContext({
+      internalRawName: "Diego Maradona",
+      nation: "ARG",
+      worldCupYear: 1982,
+      birthYear: 1960
+    });
+    const records = [
+      tmSeason("Diego Maradona", 1979, 100, 2000),
+      tmSeason("Diego Maradona", 1980, 200, 2500),
+      tmSeason("Diego Maradona", 1981, 300, 2800),
+      tmSeason("Diego Maradona", 1982, 400, 3000),
+      tmSeason("Peer One", 1982, 10, 500),
+      tmSeason("Peer Two", 1982, 20, 700)
+    ];
+    const candidate = matchTransfermarktPlayer(context, records)[0]!;
+    const rating = resolveTransfermarktRating({ context, candidate, records });
+
+    expect(worldCupCycleYears(1982)).toEqual([1979, 1980, 1981, 1982]);
+    expect(rating?.matchConfidence).toBe("HIGH");
+    expect(rating?.coverage).toBe(1);
+    expect(rating?.rating).toBeGreaterThanOrEqual(55);
+    expect(rating?.rating).toBeLessThanOrEqual(99);
+    expect(rating?.multiSeason.weightedMultiSeasonScore).not.toBeNull();
+  });
+
+  it("does not penalize young players for under-age missing seasons", () => {
+    const context = cardContext({
+      internalRawName: "Young Star",
+      nation: "ARG",
+      worldCupYear: 2022,
+      birthYear: 2004
+    });
+    const records = [
+      tmSeason("Young Star", 2021, 100, 1300, { birthYear: 2004 }),
+      tmSeason("Young Star", 2022, 200, 1800, { birthYear: 2004 })
+    ];
+    const candidate = matchTransfermarktPlayer(context, records)[0]!;
+    const rating = resolveTransfermarktRating({ context, candidate, records });
+
+    expect(rating?.coverage).toBe(1);
+    expect(rating?.warnings.some((warning) => warning.startsWith("missing_expected_seasons"))).toBe(false);
+  });
+
+  it("low minutes lower Transfermarkt confidence", () => {
+    const context = cardContext({ internalRawName: "Low Minutes", nation: "ARG", worldCupYear: 2022, birthYear: 1994 });
+    const records = [tmSeason("Low Minutes", 2019, 100, 300), tmSeason("Low Minutes", 2022, 200, 350)];
+    const candidate = matchTransfermarktPlayer(context, records)[0]!;
+    const rating = resolveTransfermarktRating({ context, candidate, records });
+
+    expect(rating?.confidence).not.toBe("HIGH");
+    expect(rating?.warnings).toEqual(expect.arrayContaining(["low_availability:2019", "low_availability:2022"]));
+  });
+
+  it("blends high-confidence Transfermarkt with Fjelstul and leaves medium Transfermarkt report-only", () => {
+    const baseContext = cardContext({ appearances: 2, minutes: 180, goals: 0, teamResult: "GROUP_STAGE" });
+    const high = resolveCardRating(baseContext, {
+      transfermarktRatings: [
+        {
+          sourceKey: "TRANSFERMARKT",
+          rating: 96,
+          baseWeight: 0.65,
+          confidence: "HIGH",
+          coverage: 1,
+          effectiveWeight: 0.65,
+          affectsRating: true,
+          reasons: ["fixture"],
+          warnings: []
+        }
+      ]
+    });
+    const medium = resolveCardRating(baseContext, {
+      transfermarktRatings: [
+        {
+          sourceKey: "TRANSFERMARKT",
+          rating: 96,
+          baseWeight: 0,
+          confidence: "MEDIUM",
+          coverage: 1,
+          effectiveWeight: 0,
+          affectsRating: true,
+          reasons: ["fixture"],
+          warnings: []
+        }
+      ]
+    });
+    const fallback = resolveCardRating(baseContext);
+
+    expect(high.breakdown?.transfermarktEffectiveWeight).toBe(0.65);
+    expect(high.overall).toBeGreaterThan(fallback.overall);
+    expect(medium.breakdown?.transfermarktEffectiveWeight).toBe(0);
+    expect(medium.overall).toBe(fallback.overall);
+  });
+
+  it("local preview can show debug names while public display names stay separate", () => {
+    const html = renderRatingLabPreviewHtml(summaryFixture({
+      cardSnapshots: [
+        {
+          ...summaryFixture().cardSnapshots[0]!,
+          debugRealName: "Diego Maradona",
+          publicDisplayName: "ARG-1982-CAM-SAFE01",
+          isLocalDebugOnly: true
+        }
+      ]
+    }));
+
+    expect(html).toContain("Diego Maradona");
+    expect(html).toContain("ARG-1982-CAM-SAFE01");
+  });
+
+  it("resolves older World Cup host labels from host_countries.csv", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-hosts-"));
+    await writeFixtureCsv(dir, "players.csv", ["player_id,given_name,family_name", "p1,Pele,"]);
+    await writeFixtureCsv(dir, "squads.csv", ["player_id,tournament_id,team_id,position", "p1,wc1970,bra,ST"]);
+    await writeFixtureCsv(dir, "tournaments.csv", ["tournament_id,year", "wc1970,1970"]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code,team_name", "bra,BRA,Brazil", "mex,MEX,Mexico"]);
+    await writeFixtureCsv(dir, "host_countries.csv", ["tournament_id,team_id", "wc1970,mex"]);
+
+    const cards = await loadFjelstulSample({ sourceDir: dir, sample: "all", seed: "test" });
+
+    expect(cards[0]?.hostCountryLabel).toBe("MEXICO");
+    expect(cards[0]?.hostResolutionWarning).toBeNull();
   });
 
   it("reports elite rating distribution diagnostics", () => {
@@ -1115,7 +1336,16 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     warnings: "",
     reasons: "",
     ...overrides,
+    cardKey: overrides.cardKey ?? "test-player-arg:1986",
+    debugRealName: overrides.debugRealName ?? "Test Player",
+    publicDisplayName: overrides.publicDisplayName ?? "ARG-1986-CAM-ABC123",
+    isLocalDebugOnly: overrides.isLocalDebugOnly ?? true,
+    hostCountryLabel: overrides.hostCountryLabel ?? "MEXICO",
+    hostCountryCode: overrides.hostCountryCode ?? "MEX",
+    hostResolutionSource: overrides.hostResolutionSource ?? "host_countries.csv",
+    hostResolutionWarning: overrides.hostResolutionWarning ?? null,
     formulaVersion: overrides.formulaVersion ?? "test-formula",
+    formulaConfigPath: overrides.formulaConfigPath ?? "test-config.json",
     selectedDistributionStrategy: overrides.selectedDistributionStrategy ?? "RAW_EVIDENCE",
     rawEvidenceOverall: overrides.rawEvidenceOverall ?? overrides.overall ?? 80,
     selectedOverall: overrides.selectedOverall ?? overrides.overall ?? 80,
@@ -1132,8 +1362,41 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     minutesTrend: overrides.minutesTrend ?? "UNKNOWN",
     trendAdjustment: overrides.trendAdjustment ?? 0,
     worldCupPerformanceRating: overrides.worldCupPerformanceRating ?? overrides.overall ?? 80,
+    worldCupRating: overrides.worldCupRating ?? overrides.worldCupPerformanceRating ?? overrides.overall ?? 80,
     worldCupPerformanceSource: overrides.worldCupPerformanceSource ?? "FJELSTUL_WORLD_CUP",
     worldCupPerformanceConfidence: overrides.worldCupPerformanceConfidence ?? "MEDIUM",
+    transfermarktRating: overrides.transfermarktRating ?? null,
+    transfermarktEffectiveWeight: overrides.transfermarktEffectiveWeight ?? 0,
+    worldCupEffectiveWeight: overrides.worldCupEffectiveWeight ?? 1,
+    finalBlendedRating: overrides.finalBlendedRating ?? overrides.overall ?? 80,
+    transfermarktMatchConfidence: overrides.transfermarktMatchConfidence ?? "NONE",
+    transfermarktCoverage: overrides.transfermarktCoverage ?? null,
+    transfermarktEligibleYears: overrides.transfermarktEligibleYears ?? "",
+    transfermarktAvailableYears: overrides.transfermarktAvailableYears ?? "",
+    tmOldestYear: overrides.tmOldestYear ?? null,
+    tmTwoBackYear: overrides.tmTwoBackYear ?? null,
+    tmPreviousYear: overrides.tmPreviousYear ?? null,
+    tmWorldCupYear: overrides.tmWorldCupYear ?? null,
+    tmOldestRating: overrides.tmOldestRating ?? null,
+    tmTwoBackRating: overrides.tmTwoBackRating ?? null,
+    tmPreviousRating: overrides.tmPreviousRating ?? null,
+    tmWorldCupYearRating: overrides.tmWorldCupYearRating ?? null,
+    tmSameSeasonScore: overrides.tmSameSeasonScore ?? null,
+    tmPreviousSeasonScore: overrides.tmPreviousSeasonScore ?? null,
+    tmTwoSeasonsBackScore: overrides.tmTwoSeasonsBackScore ?? null,
+    tmThreeSeasonsBackScore: overrides.tmThreeSeasonsBackScore ?? null,
+    tmWeightedMultiSeasonScore: overrides.tmWeightedMultiSeasonScore ?? null,
+    tmMarketValuePercentile: overrides.tmMarketValuePercentile ?? null,
+    tmAppearanceVolumeScore: overrides.tmAppearanceVolumeScore ?? null,
+    tmGoalContributionScore: overrides.tmGoalContributionScore ?? null,
+    tmAssistContributionScore: overrides.tmAssistContributionScore ?? null,
+    tmLeagueStrengthScore: overrides.tmLeagueStrengthScore ?? null,
+    tmClubStrengthScore: overrides.tmClubStrengthScore ?? null,
+    tmAgeCurveScore: overrides.tmAgeCurveScore ?? null,
+    tmMarketValueTrend: overrides.tmMarketValueTrend ?? "UNKNOWN",
+    tmProductionTrend: overrides.tmProductionTrend ?? "UNKNOWN",
+    tmMinutesTrend: overrides.tmMinutesTrend ?? "UNKNOWN",
+    tmTrendAdjustment: overrides.tmTrendAdjustment ?? 0,
     leagueStrengthAdjustment: overrides.leagueStrengthAdjustment ?? 0,
     clubStrengthAdjustment: overrides.clubStrengthAdjustment ?? 0,
     ageCurveAdjustment: overrides.ageCurveAdjustment ?? 0,
@@ -1145,6 +1408,110 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     warningsApplied: overrides.warningsApplied ?? "",
     evidenceSummary: overrides.evidenceSummary ?? "",
     comparisonSummary: overrides.comparisonSummary ?? ""
+  };
+}
+
+function tmSeason(
+  playerName: string,
+  seasonYear: number,
+  marketValueEur: number,
+  minutes: number,
+  overrides: Partial<{
+    normalizedName: string;
+    nation: string;
+    birthYear: number;
+    appearances: number;
+    goals: number;
+    assists: number;
+  }> = {}
+) {
+  return {
+    playerName,
+    normalizedName: overrides.normalizedName ?? playerName.toLowerCase(),
+    nation: overrides.nation ?? "ARG",
+    seasonYear,
+    birthYear: overrides.birthYear,
+    marketValueEur,
+    appearances: overrides.appearances ?? 30,
+    goals: overrides.goals ?? 10,
+    assists: overrides.assists ?? 8,
+    minutes,
+    clubName: "Fixture FC",
+    leagueName: "Fixture League"
+  };
+}
+
+function formulaJsonFixture(overrides: Record<string, unknown> = {}): any {
+  return {
+    version: "pre-phase-1b-raw-evidence-v1",
+    selectedStrategy: "RAW_EVIDENCE",
+    sourceBlendWeights: {
+      highConfidenceTransfermarkt: 0.65,
+      mediumConfidenceTransfermarkt: 0,
+      lowConfidenceTransfermarkt: 0,
+      worldCupWithHighConfidenceTransfermarkt: 0.35,
+      worldCupFallbackOnly: 1
+    },
+    transfermarkt: {
+      minimumCoverageToApply: 0.25,
+      seasonWindow: {
+        enabled: true,
+        usePreviousWorldCupCycle: true,
+        weights: { oldest: 0.1, twoBack: 0.2, previous: 0.3, worldCupYear: 0.4 }
+      },
+      annualSignalWeights: {
+        marketValuePercentile: 0.5,
+        appearanceVolume: 0.18,
+        goalContribution: 0.14,
+        assistContribution: 0.08,
+        clubStrength: 0.04,
+        leagueStrength: 0.04,
+        ageCurve: 0.02
+      },
+      confidenceMultipliers: { HIGH: 1, MEDIUM: 0.65, LOW: 0.35 }
+    },
+    missingSeasonRules: {
+      normalizeWeightsOverAvailableEligibleSeasons: true,
+      underAgeSeasonIsNotExpected: true,
+      underAgeCutoff: 17,
+      youngPlayerAgeMax: 19,
+      establishedPlayerAgeMin: 22,
+      missingExpectedSeasonAffects: "confidence",
+      missingExpectedSeasonRatingPenalty: 0
+    },
+    availabilityRules: {
+      enabled: true,
+      useMinutesPlayed: true,
+      useAppearancesWhenMinutesMissing: true,
+      lowAvailabilityAffects: "seasonScoreAndConfidence",
+      minimumStrongSeasonMinutes: 1200,
+      minimumEliteSeasonMinutes: 1800,
+      lowMinutesScorePenaltyMax: 0.12,
+      lowMinutesConfidencePenaltyMax: 0.25
+    },
+    caps: {
+      generatedOnlyNoStrongSignalMax: 88,
+      highRatingRequiresStrongSignalMin: 90,
+      eliteRatingRequiresExceptionalSignalMin: 95
+    },
+    distributionDiagnostics: {
+      enabled: true,
+      warnOnly: true,
+      buckets: [99, 98, 97, 96, 95, 94, 93, 92, 91, 90]
+    },
+    preview: {
+      showRealNamesInLocalPreview: true,
+      showMaskedNamesInPublicPreview: false
+    },
+    comparisonOnlySources: {
+      sevenAZeroManual: {
+        enabled: true,
+        affectsRating: false,
+        defaultTolerance: 3,
+        warningDelta: 6
+      }
+    },
+    ...overrides
   };
 }
 

@@ -14,6 +14,8 @@ export const RATING_SOURCES = [
   "FIVETHIRTYEIGHT_WORLD_CUP",
   "STATSBOMB_WORLD_CUP",
   "SEVEN_A_ZERO_COMPARISON",
+  "TRANSFERMARKT",
+  "FJELSTUL_WORLD_CUP",
   "FJELSTUL_GENERATED",
   "MIXED"
 ] as const;
@@ -85,6 +87,19 @@ export type ComparisonReference = {
   reason: string;
 };
 
+export type AppliedRatingSource = {
+  sourceKey: RatingSourceKey;
+  rating: number;
+  baseWeight: number;
+  confidence: Confidence;
+  coverage: number;
+  effectiveWeight: number;
+  affectsRating: boolean;
+  reasons: readonly string[];
+  warnings: readonly string[];
+  signals?: Record<string, number | string | null>;
+};
+
 export type RatingWarning = {
   code: string;
   message: string;
@@ -144,6 +159,7 @@ export type RatingSourcesInput = {
   fiveThirtyEight?: readonly ExternalRatingRecord[];
   statsBomb?: readonly ExternalRatingRecord[];
   sevenAZeroComparison?: readonly SevenAZeroComparison[];
+  transfermarktRatings?: readonly AppliedRatingSource[];
   applySevenAZero?: boolean;
 };
 
@@ -166,6 +182,14 @@ export type FjelstulCardContext = {
   tournamentCount: number;
   samePlayerEditionCount: number;
   seed: string;
+  birthYear?: number;
+  debugRealName?: string;
+  publicDisplayName?: string;
+  isLocalDebugOnly?: boolean;
+  hostCountryLabel?: string;
+  hostCountryCode?: string;
+  hostResolutionSource?: string;
+  hostResolutionWarning?: string | null;
 };
 
 export type ResolvedRating = {
@@ -184,6 +208,7 @@ export type ResolvedRating = {
 
 export type RatingBreakdown = {
   formulaVersion: string;
+  formulaConfigPath: string | null;
   selectedDistributionStrategy: RatingDistributionStrategy;
   rawEvidenceOverall: number;
   selectedOverall: number;
@@ -210,12 +235,28 @@ export type RatingBreakdown = {
   individualStatsConfidence: Confidence;
   evidence: readonly RatingEvidence[];
   comparisonReferences: readonly ComparisonReference[];
+  appliedSources: readonly AppliedRatingSource[];
+  ignoredSources: readonly AppliedRatingSource[];
+  transfermarktRating: number | null;
+  transfermarktMatchConfidence: SourceConfidence;
+  transfermarktCoverage: number | null;
+  transfermarktEffectiveWeight: number;
+  worldCupEffectiveWeight: number;
+  finalBlendedRating: number;
   warnings: readonly string[];
 };
 
 export type RatingLabCardReport = {
+  cardKey: string;
   internalRawName: string;
   publicPlaceholderName: string;
+  debugRealName: string | null;
+  publicDisplayName: string;
+  isLocalDebugOnly: boolean;
+  hostCountryLabel: string;
+  hostCountryCode: string;
+  hostResolutionSource: string;
+  hostResolutionWarning: string | null;
   worldCupYear: number;
   nation: string;
   position: VisiblePosition;
@@ -244,6 +285,7 @@ export type RatingLabCardReport = {
   warnings: string;
   reasons: string;
   formulaVersion: string;
+  formulaConfigPath: string | null;
   selectedDistributionStrategy: RatingDistributionStrategy;
   rawEvidenceOverall: number;
   selectedOverall: number;
@@ -262,6 +304,39 @@ export type RatingLabCardReport = {
   worldCupPerformanceRating: number | null;
   worldCupPerformanceSource: RatingSourceKey | null;
   worldCupPerformanceConfidence: SourceConfidence;
+  worldCupRating: number | null;
+  transfermarktRating: number | null;
+  transfermarktEffectiveWeight: number;
+  worldCupEffectiveWeight: number;
+  finalBlendedRating: number;
+  transfermarktMatchConfidence: SourceConfidence;
+  transfermarktCoverage: number | null;
+  transfermarktEligibleYears: string;
+  transfermarktAvailableYears: string;
+  tmOldestYear: number | null;
+  tmTwoBackYear: number | null;
+  tmPreviousYear: number | null;
+  tmWorldCupYear: number | null;
+  tmOldestRating: number | null;
+  tmTwoBackRating: number | null;
+  tmPreviousRating: number | null;
+  tmWorldCupYearRating: number | null;
+  tmSameSeasonScore: number | null;
+  tmPreviousSeasonScore: number | null;
+  tmTwoSeasonsBackScore: number | null;
+  tmThreeSeasonsBackScore: number | null;
+  tmWeightedMultiSeasonScore: number | null;
+  tmMarketValuePercentile: number | null;
+  tmAppearanceVolumeScore: number | null;
+  tmGoalContributionScore: number | null;
+  tmAssistContributionScore: number | null;
+  tmLeagueStrengthScore: number | null;
+  tmClubStrengthScore: number | null;
+  tmAgeCurveScore: number | null;
+  tmMarketValueTrend: string;
+  tmProductionTrend: string;
+  tmMinutesTrend: string;
+  tmTrendAdjustment: number;
   leagueStrengthAdjustment: number;
   clubStrengthAdjustment: number;
   ageCurveAdjustment: number;
@@ -279,6 +354,13 @@ export type RatingLabCardSnapshot = {
   key: string;
   internalRawName: string;
   publicPlaceholderName: string;
+  debugRealName?: string | null;
+  publicDisplayName?: string;
+  isLocalDebugOnly?: boolean;
+  hostCountryLabel?: string;
+  hostCountryCode?: string;
+  hostResolutionSource?: string;
+  hostResolutionWarning?: string | null;
   worldCupYear: number;
   nation: string;
   position: VisiblePosition;
@@ -293,6 +375,12 @@ export type RatingLabCardSnapshot = {
   selectedOverall?: number;
   seasonAbilityBaseline?: number | null;
   worldCupPerformanceRating?: number | null;
+  transfermarktRating?: number | null;
+  transfermarktEffectiveWeight?: number;
+  worldCupEffectiveWeight?: number;
+  finalBlendedRating?: number;
+  transfermarktMatchConfidence?: SourceConfidence;
+  transfermarktCoverage?: number | null;
   trendAdjustment?: number;
   capsApplied?: string;
   evidenceSummary?: string;
@@ -437,6 +525,8 @@ export type RatingDistributionDiagnostics = {
 export type RatingLabSummary = {
   generatedAt: string;
   formulaVersion?: string;
+  formulaConfigPath?: string | null;
+  formulaConfigFallbackUsed?: boolean;
   selectedDistributionStrategy?: RatingDistributionStrategy;
   sourceDir: string;
   sourceAvailability?: RatingLabSourceAvailability[];

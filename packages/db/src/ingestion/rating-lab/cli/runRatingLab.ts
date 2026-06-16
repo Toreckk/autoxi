@@ -25,11 +25,26 @@ export async function runRatingLab(options: CliOptions): Promise<string[]> {
     preset: options.preset,
     overridePath: options.formulaConfigPath ? resolveCliPath(options.formulaConfigPath) : undefined
   });
+  console.log(
+    [
+      "Formula config:",
+      `- version: ${formulaConfig.version}`,
+      `- selectedStrategy: ${formulaConfig.ratingDistribution.selectedStrategy}`,
+      `- path used: ${formulaConfig.formulaConfigPath ?? "built-in TypeScript fallback"}`,
+      `- fallback used: ${String(formulaConfig.formulaConfigFallbackUsed ?? false)}`
+    ].join("\n")
+  );
   return runCalibration({
     ...options,
     sourceDir,
     formulaConfig,
-    sourceAvailability: sourcePaths.availability
+    sourceAvailability: sourcePaths.availability,
+    transfermarktSourceDir:
+      options.sourceDir && !options.sourcePathOverrides?.transfermarkt
+        ? undefined
+        : sourcePaths.sources.transfermarkt.available
+          ? sourcePaths.sources.transfermarkt.path
+          : undefined
   });
 }
 

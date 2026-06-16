@@ -130,14 +130,22 @@ export async function writeDevPreviewCards(options: {
         aliasRows.push({
           id: aliasId,
           playerIdentityId: identityId,
-          displayName: card.publicPlaceholderName,
-          shortName: shortAlias(card.publicPlaceholderName),
+          displayName: devPreviewDisplayName(card),
+          shortName: shortAlias(devPreviewDisplayName(card)),
           localeHint: nation.flagCode,
           riskLevel: "SAFE",
-          generationMethod: "rating_lab_public_placeholder",
+          generationMethod: card.isLocalDebugOnly ? "rating_lab_local_debug_name" : "rating_lab_public_placeholder",
           isApproved: false,
-          notes: "Public-safe placeholder alias generated from ingested source data.",
-          metadata: { publicSafe: true, previewReasons: selection.reasons }
+          notes: card.isLocalDebugOnly
+            ? "Development-only rating-lab alias using source/debug name."
+            : "Public-safe placeholder alias generated from ingested source data.",
+          metadata: {
+            publicSafe: !card.isLocalDebugOnly,
+            isLocalDebugOnly: Boolean(card.isLocalDebugOnly),
+            publicDisplayName: card.publicDisplayName ?? card.publicPlaceholderName,
+            debugRealName: card.debugRealName ?? null,
+            previewReasons: selection.reasons
+          }
         });
 
         cardRows.push({
@@ -314,12 +322,25 @@ async function ensurePreviewEditions(
 
   for (const year of years) {
     if (existingYears.has(year)) continue;
+    const representative = cards.find((card) => card.worldCupYear === year);
     await tx.insert(worldCupEditions).values({
       id: deterministicUuid(`edition-${year}`),
       year,
-      hostName: "Unknown Host",
-      hostCountryCode: null
+      hostName: hostNameForPreview(representative),
+      hostCountryCode: representative?.hostCountryCode && representative.hostCountryCode !== "UNK" ? representative.hostCountryCode : null
     });
+  }
+
+  for (const year of years) {
+    const representative = cards.find((card) => card.worldCupYear === year);
+    if (!representative || representative.hostCountryLabel === "UNKNOWN HOST") continue;
+    await tx
+      .update(worldCupEditions)
+      .set({
+        hostName: hostNameForPreview(representative),
+        hostCountryCode: representative.hostCountryCode && representative.hostCountryCode !== "UNK" ? representative.hostCountryCode : null
+      })
+      .where(eq(worldCupEditions.year, year));
   }
 
   const rows =
@@ -347,6 +368,14 @@ function previewFlagCode(code: string): string {
 function shortAlias(publicPlaceholderName: string): string {
   const parts = publicPlaceholderName.split("-");
   return parts.length >= 4 ? parts.slice(0, 4).join("-") : publicPlaceholderName.slice(0, 24);
+}
+
+function devPreviewDisplayName(card: RatingLabCardSnapshot): string {
+  return card.isLocalDebugOnly && card.debugRealName ? card.debugRealName : card.publicDisplayName ?? card.publicPlaceholderName;
+}
+
+function hostNameForPreview(card: RatingLabCardSnapshot | undefined): string {
+  return card?.hostCountryLabel && card.hostCountryLabel !== "UNKNOWN HOST" ? card.hostCountryLabel : "Unknown Host";
 }
 
 function shortHash(value: string): string {

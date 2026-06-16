@@ -53,7 +53,7 @@ const SOURCE_DEFINITIONS: Record<RatingLabSourcePathKey, Omit<ResolvedRatingLabS
     defaultPath: "transfermarkt",
     required: false,
     mode: "optional",
-    affectsRating: false,
+    affectsRating: true,
     envVar: "RATING_LAB_TRANSFERMARKT_SOURCE_DIR"
   },
   eaHistorical: {
@@ -113,7 +113,7 @@ const SOURCE_DEFINITIONS: Record<RatingLabSourcePathKey, Omit<ResolvedRatingLabS
     defaultPath: "annual-awards",
     required: false,
     mode: "optional",
-    affectsRating: true,
+    affectsRating: false,
     envVar: "RATING_LAB_ANNUAL_AWARDS_SOURCE_DIR"
   },
   manual: {

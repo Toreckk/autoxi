@@ -54,6 +54,12 @@ type AwardWinnerIndex = {
 };
 
 type PlayerTournamentNationIndex = Map<string, string>;
+type HostResolution = {
+  label: string;
+  code: string;
+  source: string;
+  warning: string | null;
+};
 
 const POSITION_ALIASES: Record<string, VisiblePosition> = {
   gk: "GK",
@@ -168,6 +174,7 @@ export async function loadFjelstulSampleWithReadiness(
   for (const warning of awardIndex.warnings) sourceWarnings.add(warning);
   const resultIndex = aggregateResults(standingRows, tournamentYearById, teamCodeById);
   const hosts = aggregateHosts(hostRows, tournamentYearById, teamCodeById);
+  const hostLabels = aggregateHostLabels(hostRows, tournamentRows, teamRows, tournamentYearById, teamCodeById);
 
   const seen = new Map<string, FjelstulCardContext>();
   for (const row of squadRows) {
@@ -207,6 +214,15 @@ export async function loadFjelstulSampleWithReadiness(
             ),
       teamResult: resultIndex.get(`${worldCupYear}:${normalizeName(nation)}`) ?? "UNKNOWN",
       host: hosts.get(worldCupYear)?.has(normalizeName(nation)) ?? false,
+      debugRealName: internalRawName,
+      publicDisplayName: publicSafePlaceholderName({ nation, worldCupYear, position, identityKey: key }),
+      isLocalDebugOnly: true,
+      hostCountryLabel: hostLabels.get(worldCupYear)?.label ?? "UNKNOWN HOST",
+      hostCountryCode: hostLabels.get(worldCupYear)?.code ?? "UNK",
+      hostResolutionSource: hostLabels.get(worldCupYear)?.source ?? "fallback",
+      hostResolutionWarning: hostLabels.has(worldCupYear)
+        ? hostLabels.get(worldCupYear)!.warning
+        : `host_country_unresolved:${worldCupYear}`,
       tournamentCount: 1,
       samePlayerEditionCount: 1,
       seed: options.seed ?? "rating-lab"
@@ -673,6 +689,70 @@ function aggregateHosts(
     hosts.set(year, new Set([...(hosts.get(year) ?? []), normalizeName(host)]));
   }
   return hosts;
+}
+
+function aggregateHostLabels(
+  hostRows: readonly CsvRow[],
+  tournamentRows: readonly CsvRow[],
+  teamRows: readonly CsvRow[],
+  tournamentYearById: ReadonlyMap<string, number>,
+  teamCodeById: ReadonlyMap<string, string>
+): Map<number, HostResolution> {
+  const labels = new Map<number, HostResolution>();
+  const teamNameById = buildTeamNameById(teamRows);
+
+  for (const row of hostRows) {
+    const year = yearForRow(row, tournamentYearById);
+    if (!year) continue;
+    const hostCode =
+      valueFor(row, ["host_country_code", "host_team_code", "team_code", "country_code", "fifa_code"]) ??
+      nationForRow(
+        {
+          ...row,
+          team_code: valueFor(row, ["host_country_code", "host_team_code", "host", "host_name", "country", "team_id"]) ?? ""
+        },
+        teamCodeById
+      );
+    const hostLabel =
+      valueFor(row, ["host_country", "host_country_name", "host_name", "country", "team_name", "name"]) ??
+      (hostCode ? teamNameById.get(normalizeName(hostCode)) : undefined) ??
+      hostCode;
+    if (!hostCode || !hostLabel || hostCode === "UNK") continue;
+    const existing = labels.get(year);
+    const codes = [...new Set([...(existing?.code.split("/") ?? []), hostCode])].filter(Boolean);
+    const names = [...new Set([...(existing?.label.split("/") ?? []), hostLabel])].filter(Boolean);
+    labels.set(year, {
+      code: codes.join("/").toUpperCase(),
+      label: names.join("/").toUpperCase(),
+      source: "host_countries.csv",
+      warning: null
+    });
+  }
+
+  for (const row of tournamentRows) {
+    const year = yearForRow(row, tournamentYearById);
+    if (!year || labels.has(year)) continue;
+    const hostLabel = valueFor(row, ["host_country", "host_country_name", "host", "hosts", "country"]);
+    if (!hostLabel) continue;
+    labels.set(year, {
+      code: normalizeName(hostLabel).toUpperCase().replaceAll(" ", "_"),
+      label: hostLabel.toUpperCase(),
+      source: "tournaments.csv",
+      warning: null
+    });
+  }
+
+  return labels;
+}
+
+function buildTeamNameById(rows: readonly CsvRow[]): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const row of rows) {
+    const id = valueFor(row, ["team_id", "id", "team_code"]);
+    const label = valueFor(row, ["team_name", "name", "country", "team"]);
+    if (id && label) byId.set(normalizeName(id), label);
+  }
+  return byId;
 }
 
 function selectSample(cards: readonly FjelstulCardContext[], options: LoadFjelstulSampleOptions): FjelstulCardContext[] {

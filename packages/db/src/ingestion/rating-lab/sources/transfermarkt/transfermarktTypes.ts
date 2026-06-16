@@ -1,4 +1,4 @@
-import type { Confidence, FjelstulCardContext } from "../../domain/types.js";
+import type { Confidence, FjelstulCardContext, MultiSeasonAbilitySignals } from "../../domain/types.js";
 
 export type TransfermarktProfile = {
   sourceDir: string;
@@ -20,6 +20,7 @@ export type TransfermarktPlayerSeason = {
   normalizedName: string;
   nation?: string;
   seasonYear: number;
+  birthYear?: number;
   marketValueEur: number | null;
   appearances: number | null;
   goals: number | null;
@@ -44,6 +45,25 @@ export type TransfermarktSeasonBaseline = {
   appearancePercentile: number | null;
   productionPercentile: number | null;
   reason: string;
+};
+
+export type TransfermarktRatingResult = {
+  rating: number;
+  confidence: Confidence;
+  coverage: number;
+  matchConfidence: Confidence;
+  multiSeason: MultiSeasonAbilitySignals;
+  signals: {
+    marketValuePercentile?: number;
+    appearanceVolumeScore?: number;
+    goalContributionScore?: number;
+    assistContributionScore?: number;
+    leagueStrengthScore?: number;
+    clubStrengthScore?: number;
+    ageCurveScore?: number;
+  };
+  reasons: readonly string[];
+  warnings: readonly string[];
 };
 
 export type TransfermarktMultiSeasonBaseline = {

@@ -9,6 +9,7 @@ import type {
 
 export type RatingLabReports = {
   summary: RatingLabSummary;
+  allCards: RatingLabCardReport[];
   icons: RatingLabCardReport[];
   randomSample: RatingLabCardReport[];
   topByTournament: RatingLabCardReport[];

@@ -68,7 +68,9 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
       <span class="pill">seed ${escapeHtml(summary.seed)}</span>
       <span class="pill">${escapeHtml(summary.sampleMode)}</span>
       <span class="pill">${escapeHtml(summary.formulaVersion ?? "formula unknown")}</span>
+      <span class="pill">${escapeHtml(summary.formulaConfigPath ?? "config path unknown")}</span>
       <span class="pill">${escapeHtml(summary.selectedDistributionStrategy ?? "RAW_EVIDENCE")}</span>
+      <span class="pill">local/debug names enabled</span>
     </div>
   </header>
   <main>
@@ -85,6 +87,7 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
     </section>
     ${sourceAvailabilitySection(summary)}
     ${distributionSection(summary)}
+    ${sourceBlendSection(cards)}
     ${listSection("Gate Reasons", summary.confidenceGateReasons)}
     ${cardSection("Top Cards By Tournament", topByTournament)}
     ${cardSection("Icons And Heroes", icons)}
@@ -138,8 +141,10 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
   const rows = cards
     .map(
       (card) => `<tr>
-        <td>${escapeHtml(card.publicPlaceholderName)}</td>
-        <td><span class="muted">dev-only:</span> ${escapeHtml(card.internalRawName)}</td>
+        <td>${escapeHtml(displayName(card))}</td>
+        <td>${escapeHtml(card.publicDisplayName ?? card.publicPlaceholderName)}</td>
+        <td><span class="muted">dev-only:</span> ${escapeHtml(card.debugRealName ?? card.internalRawName)}</td>
+        <td>${escapeHtml(card.hostCountryLabel ?? "UNKNOWN HOST")}</td>
         <td>${escapeHtml(card.nation)}</td>
         <td>${card.worldCupYear}</td>
         <td>${escapeHtml(card.position)}</td>
@@ -147,6 +152,10 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
         <td>${escapeHtml(card.tier)}</td>
         <td>${escapeHtml(card.primarySource)}</td>
         <td>${escapeHtml(card.confidence)}</td>
+        <td>${escapeHtml(`${card.transfermarktRating ?? "n/a"} / ${card.worldCupPerformanceRating ?? "n/a"}`)}</td>
+        <td>${escapeHtml(`${card.transfermarktEffectiveWeight ?? 0} / ${card.worldCupEffectiveWeight ?? 0}`)}</td>
+        <td>${escapeHtml(card.transfermarktMatchConfidence ?? "NONE")}</td>
+        <td>${escapeHtml(String(card.transfermarktCoverage ?? ""))}</td>
         <td>${escapeHtml(String(card.rawEvidenceOverall ?? ""))}</td>
         <td>${escapeHtml(card.evidenceSummary ?? "")}</td>
         <td>${escapeHtml(card.comparisonSummary ?? "")}</td>
@@ -155,7 +164,30 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
       </tr>`
     )
     .join("");
-  return `<table><thead><tr><th>Public Name</th><th>Internal Raw Name</th><th>Nation</th><th>Year</th><th>Pos</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Name</th><th>Public Name</th><th>Debug Real Name</th><th>Host</th><th>Nation</th><th>Year</th><th>Pos</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>TM / WC Rating</th><th>TM / WC Weight</th><th>TM Match</th><th>TM Coverage</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function displayName(card: RatingLabCardSnapshot): string {
+  return card.isLocalDebugOnly && card.debugRealName ? card.debugRealName : card.publicDisplayName ?? card.publicPlaceholderName;
+}
+
+function sourceBlendSection(cards: readonly RatingLabCardSnapshot[]): string {
+  const transfermarktApplied = cards
+    .filter((card) => (card.transfermarktEffectiveWeight ?? 0) > 0)
+    .sort((left, right) => Math.abs((right.finalBlendedRating ?? right.overall) - (right.worldCupPerformanceRating ?? right.overall)) - Math.abs((left.finalBlendedRating ?? left.overall) - (left.worldCupPerformanceRating ?? left.overall)))
+    .slice(0, 50);
+  const fjelstulOnly = cards
+    .filter((card) => (card.transfermarktEffectiveWeight ?? 0) <= 0)
+    .sort((left, right) => right.overall - left.overall)
+    .slice(0, 50);
+  const lowConfidenceElites = cards
+    .filter((card) => card.overall >= 90 && card.confidence !== "HIGH")
+    .slice(0, 50);
+  return [
+    cardSection("Source Blend Breakdown", transfermarktApplied),
+    cardSection("Top Cards Still Fjelstul-Only", fjelstulOnly),
+    cardSection("Low-Confidence Elite Cards", lowConfidenceElites)
+  ].join("");
 }
 
 function sourceAvailabilitySection(summary: RatingLabSummary): string {
