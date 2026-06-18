@@ -26,6 +26,7 @@ import {
 
 async function seed() {
   const { db, client } = createDbClient();
+  const includeFictionalSeedCards = process.env.INCLUDE_FICTIONAL_SEED_CARDS === "true";
 
   try {
     await db.transaction(async (tx) => {
@@ -89,15 +90,17 @@ async function seed() {
         }
       }
 
-      await tx.insert(sourceImports).values({
-        id: seedImportId,
-        sourceName: "curated_fictional_seed_v1",
-        sourceVersion: "1",
-        licenseNote: "Fictional development seed data only.",
-        metadata: { publicSafeAliases: true }
-      });
+      if (includeFictionalSeedCards) {
+        await tx.insert(sourceImports).values({
+          id: seedImportId,
+          sourceName: "curated_fictional_seed_v1",
+          sourceVersion: "1",
+          licenseNote: "Fictional development seed data only.",
+          metadata: { publicSafeAliases: true }
+        });
+      }
 
-      for (const card of seedCards) {
+      for (const card of includeFictionalSeedCards ? seedCards : []) {
         const [nation] = await tx.select().from(nations).where(eq(nations.flagCode, card.nation)).limit(1);
         const [edition] = await tx.select().from(worldCupEditions).where(eq(worldCupEditions.year, card.year)).limit(1);
 
@@ -206,7 +209,11 @@ async function seed() {
       }
     });
 
-    console.info(`[db:seed] inserted ${seedCards.length} fictional public cards`);
+    console.info(
+      includeFictionalSeedCards
+        ? `[db:seed] inserted ${seedCards.length} fictional public cards`
+        : "[db:seed] skipped fictional public cards; run rating-lab dev preview for collection data"
+    );
   } finally {
     await client.end();
   }

@@ -1,4 +1,4 @@
-import { broadLineForPosition, costForTier, materialForTier, type CardRole } from "@autoxi/domain";
+import { broadLineForPosition, costForTier, materialForTier, type CardEditionKey, type CardRole } from "@autoxi/domain";
 import { eq, inArray, like } from "drizzle-orm";
 import { createDbClient } from "../../../client.js";
 import {
@@ -12,6 +12,7 @@ import {
   sourceImports,
   sourcePlayers,
   worldCupAwardWinners,
+  worldCupAwards,
   worldCupEditions
 } from "../../../schema.js";
 import { deterministicUuid } from "../../../seedData.js";
@@ -23,6 +24,7 @@ import type { PreviewImportEstimate } from "./estimatePreviewImportSize.js";
 
 const PREVIEW_SOURCE_NAME = "rating_lab_preview";
 const PREVIEW_IDENTITY_PREFIX = "rating-lab-preview:";
+const LEGACY_FICTIONAL_SOURCE_NAME = "curated_fictional_seed_v1";
 
 export type DevPreviewWriteResult = {
   sourceImportId: string;
@@ -78,6 +80,8 @@ export async function writeDevPreviewCards(options: {
       const cardRows: Array<typeof playerCards.$inferInsert> = [];
       const outfieldStatRows: Array<typeof playerCardOutfieldStats.$inferInsert> = [];
       const goalkeeperStatRows: Array<typeof playerCardGoalkeeperStats.$inferInsert> = [];
+      const awardWinnerRows: Array<typeof worldCupAwardWinners.$inferInsert> = [];
+      const awardByCode = await ensurePreviewAwards(tx);
 
       for (const [index, selection] of selections.entries()) {
         const card = selection.card;
@@ -90,6 +94,7 @@ export async function writeDevPreviewCards(options: {
         const identityId = deterministicUuid(`identity-${PREVIEW_SOURCE_NAME}-${previewKey}`);
         const aliasId = deterministicUuid(`alias-${PREVIEW_SOURCE_NAME}-${previewKey}`);
         const cardId = deterministicUuid(`card-${PREVIEW_SOURCE_NAME}-${previewKey}`);
+        const editionKey = card.editionKey ?? "NONE";
         const role = defaultRoleForPosition(card.position);
         const stats = generateStatsFromOverall({
           overall: card.overall,
@@ -161,10 +166,27 @@ export async function writeDevPreviewCards(options: {
           broadLine: broadLineForPosition(card.position),
           statProfile: stats.profile,
           role,
-          editionKey: "NONE",
+          editionKey,
           cost: costForTier(card.tier),
           materialKey: materialForTier(card.tier)
         });
+
+        if (editionKey !== "NONE") {
+          const award = awardByCode.get(editionKey);
+          if (award) {
+            awardWinnerRows.push({
+              id: deterministicUuid(`award-winner-${PREVIEW_SOURCE_NAME}-${previewKey}-${editionKey}`),
+              worldCupEditionId: edition.id,
+              awardId: award.id,
+              playerIdentityId: identityId,
+              playerCardId: cardId,
+              nationId: nation.id,
+              sourcePlayerId,
+              rawWinnerName: card.debugRealName ?? card.internalRawName,
+              notes: "Development-only award winner from Fjelstul award_winners.csv."
+            });
+          }
+        }
 
         if (stats.profile === "GOALKEEPER") {
           goalkeeperStatRows.push({
@@ -195,6 +217,7 @@ export async function writeDevPreviewCards(options: {
       if (cardRows.length > 0) await tx.insert(playerCards).values(cardRows);
       if (outfieldStatRows.length > 0) await tx.insert(playerCardOutfieldStats).values(outfieldStatRows);
       if (goalkeeperStatRows.length > 0) await tx.insert(playerCardGoalkeeperStats).values(goalkeeperStatRows);
+      if (awardWinnerRows.length > 0) await tx.insert(worldCupAwardWinners).values(awardWinnerRows);
 
       return {
         sourceImportId,
@@ -228,7 +251,7 @@ async function resetRatingLabPreviewInTransaction(tx: Parameters<Parameters<Retu
   const previewImports = await tx
     .select({ id: sourceImports.id })
     .from(sourceImports)
-    .where(eq(sourceImports.sourceName, PREVIEW_SOURCE_NAME));
+    .where(inArray(sourceImports.sourceName, [PREVIEW_SOURCE_NAME, LEGACY_FICTIONAL_SOURCE_NAME]));
   const importIds = previewImports.map((row) => row.id);
 
   const previewSourcePlayers =
@@ -237,11 +260,15 @@ async function resetRatingLabPreviewInTransaction(tx: Parameters<Parameters<Retu
       : [];
   const sourcePlayerIds = previewSourcePlayers.map((row) => row.id);
 
-  const previewIdentities = await tx
+  const prefixedIdentities = await tx
     .select({ id: playerIdentities.id })
     .from(playerIdentities)
     .where(like(playerIdentities.identityKey, `${PREVIEW_IDENTITY_PREFIX}%`));
-  const identityIds = previewIdentities.map((row) => row.id);
+  const sourcePlayerIdentities =
+    sourcePlayerIds.length > 0
+      ? await tx.select({ id: playerIdentities.id }).from(playerIdentities).where(inArray(playerIdentities.sourcePlayerId, sourcePlayerIds))
+      : [];
+  const identityIds = [...new Set([...prefixedIdentities, ...sourcePlayerIdentities].map((row) => row.id))];
 
   const previewCards =
     identityIds.length > 0
@@ -349,6 +376,33 @@ async function ensurePreviewEditions(
       ? await tx.select({ id: worldCupEditions.id, year: worldCupEditions.year }).from(worldCupEditions).where(inArray(worldCupEditions.year, years))
       : [];
   return new Map(rows.map((row) => [row.year, { id: row.id }]));
+}
+
+async function ensurePreviewAwards(
+  tx: Parameters<Parameters<ReturnType<typeof createDbClient>["db"]["transaction"]>[0]>[0]
+): Promise<Map<CardEditionKey, { id: string }>> {
+  const awards = [
+    ["GOLDEN_BALL", "Golden Ball", "Best player award."],
+    ["GOLDEN_BOOT", "Golden Boot", "Top scorer award."],
+    ["GOLDEN_GLOVE", "Golden Glove", "Best goalkeeper award."],
+    ["BEST_YOUNG_PLAYER", "Best Young Player", "Best young player award."]
+  ] as const satisfies readonly (readonly [CardEditionKey, string, string])[];
+  const codes = awards.map(([code]) => code);
+  const existing = await tx.select({ id: worldCupAwards.id, code: worldCupAwards.code }).from(worldCupAwards).where(inArray(worldCupAwards.code, codes));
+  const existingCodes = new Set(existing.map((award) => award.code));
+
+  for (const [code, label, description] of awards) {
+    if (existingCodes.has(code)) continue;
+    await tx.insert(worldCupAwards).values({
+      id: deterministicUuid(`world-cup-award-${code}`),
+      code,
+      label,
+      description
+    });
+  }
+
+  const rows = await tx.select({ id: worldCupAwards.id, code: worldCupAwards.code }).from(worldCupAwards).where(inArray(worldCupAwards.code, codes));
+  return new Map(rows.map((row) => [row.code as CardEditionKey, { id: row.id }]));
 }
 
 function defaultRoleForPosition(position: RatingLabCardSnapshot["position"]): CardRole {

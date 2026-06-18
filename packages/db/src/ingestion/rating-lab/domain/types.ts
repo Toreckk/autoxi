@@ -381,6 +381,8 @@ export type RatingLabCardSnapshot = {
   position: VisiblePosition;
   overall: number;
   tier: CardTier;
+  editionKey?: CardEditionKey;
+  awards?: string;
   primarySource: RatingSource;
   confidence: Confidence;
   warnings: string;

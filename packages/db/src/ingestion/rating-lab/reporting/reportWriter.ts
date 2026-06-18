@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveEditionKeyFromAwards } from "@autoxi/domain";
 import { detectAnomalies, detectAnomalyDetails } from "../domain/evaluation/anomalyDetection.js";
 import { evaluateBenchmarks } from "../domain/evaluation/benchmarkRanges.js";
 import { summarizeSevenAZeroComparison } from "../sources/seven-a-zero/compareWithSevenAZero.js";
@@ -191,7 +192,7 @@ export function toCardReport({
     estimatedOverallFromStats: resolved.estimatedOverallFromStats,
     overallStatDelta: resolved.overallStatDelta,
     tier: resolved.tier,
-    editionKey: context.awards[0] ?? "NONE",
+    editionKey: resolveEditionKeyFromAwards({ position: context.position, awardKeys: context.awards }),
     primarySource: resolved.primarySource,
     sourceTypes,
     confidence: resolved.confidence,
@@ -664,6 +665,8 @@ function toSnapshot(card: RatingLabCardReport): RatingLabCardSnapshot {
     position: card.position,
     overall: card.overall,
     tier: card.tier,
+    editionKey: card.editionKey,
+    awards: card.awards,
     primarySource: card.primarySource,
     confidence: card.confidence,
     warnings: card.warnings,
