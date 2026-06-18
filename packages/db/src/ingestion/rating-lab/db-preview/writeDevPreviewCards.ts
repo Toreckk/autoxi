@@ -16,6 +16,7 @@ import {
 } from "../../../schema.js";
 import { deterministicUuid } from "../../../seedData.js";
 import { generateStatsFromOverall } from "../domain/rating/generateStatsFromOverall.js";
+import { resolveFlagCode } from "../sources/nations/flagCodeResolver.js";
 import type { RatingLabCardSnapshot, RatingLabSummary } from "../domain/types.js";
 import { selectPreviewCards } from "./selectPreviewCards.js";
 import type { PreviewImportEstimate } from "./estimatePreviewImportSize.js";
@@ -135,7 +136,7 @@ export async function writeDevPreviewCards(options: {
           localeHint: nation.flagCode,
           riskLevel: "SAFE",
           generationMethod: card.isLocalDebugOnly ? "rating_lab_local_debug_name" : "rating_lab_public_placeholder",
-          isApproved: false,
+          isApproved: true,
           notes: card.isLocalDebugOnly
             ? "Development-only rating-lab alias using source/debug name."
             : "Public-safe placeholder alias generated from ingested source data.",
@@ -362,7 +363,7 @@ function defaultRoleForPosition(position: RatingLabCardSnapshot["position"]): Ca
 }
 
 function previewFlagCode(code: string): string {
-  return code.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "unk";
+  return resolveFlagCode(code);
 }
 
 function shortAlias(publicPlaceholderName: string): string {

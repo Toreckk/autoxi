@@ -29,10 +29,15 @@ export type RatingFormulaConfig = {
       appearanceVolume: number;
       goalContribution: number;
       assistContribution: number;
+      starterShare: number;
       clubStrength: number;
       leagueStrength: number;
       ageCurve: number;
+      cardsDiscipline: number;
     };
+    normalizeAnnualWeightsOverAvailableSignals: boolean;
+    minimumSignalsForHighConfidenceRating: number;
+    requiredSignalsForHighConfidenceRating: readonly string[];
     confidenceMultipliers: Record<"HIGH" | "MEDIUM" | "LOW", number>;
   };
   missingSeasonRules: {
@@ -93,9 +98,11 @@ export type RatingFormulaConfig = {
       appearanceVolume: number;
       goalContribution: number;
       assistContribution: number;
+      starterShare: number;
       clubStrength: number;
       leagueStrength: number;
       ageCurve: number;
+      cardsDiscipline: number;
       transferSignal: number;
       multiSeasonConsistency: number;
       trendDirection: number;

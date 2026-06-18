@@ -16,16 +16,25 @@ export type TransfermarktFileProfile = {
 };
 
 export type TransfermarktPlayerSeason = {
+  playerId: string;
   playerName: string;
   normalizedName: string;
   nation?: string;
   seasonYear: number;
   birthYear?: number;
+  position?: string;
+  subPosition?: string;
   marketValueEur: number | null;
+  highestMarketValueEur: number | null;
   appearances: number | null;
   goals: number | null;
   assists: number | null;
   minutes: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+  starterCount: number | null;
+  benchCount: number | null;
+  captainCount: number | null;
   clubName?: string;
   leagueName?: string;
 };
@@ -36,6 +45,13 @@ export type TransfermarktMatchCandidate = {
   score: number;
   confidence: Confidence;
   reasons: string[];
+  transfermarktPlayerId: string;
+  matchNameStatus: string;
+  matchNationStatus: string;
+  matchBirthYearStatus: string;
+  matchPositionStatus: string;
+  matchFailureReason: string;
+  matchedOn: string;
 };
 
 export type TransfermarktSeasonBaseline = {
@@ -58,9 +74,14 @@ export type TransfermarktRatingResult = {
     appearanceVolumeScore?: number;
     goalContributionScore?: number;
     assistContributionScore?: number;
+    starterShareScore?: number;
     leagueStrengthScore?: number;
     clubStrengthScore?: number;
     ageCurveScore?: number;
+    cardsDisciplineScore?: number;
+    signalsAvailable?: string;
+    signalsMissing?: string;
+    transfermarktPlayerId?: string;
   };
   reasons: readonly string[];
   warnings: readonly string[];

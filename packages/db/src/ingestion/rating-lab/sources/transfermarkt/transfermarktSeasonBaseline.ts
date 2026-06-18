@@ -12,29 +12,37 @@ export function resolveTransfermarktSeasonBaseline(
   const appearanceVolumeScore = availabilityScore(record, config);
   const goalContributionScore = percentileRank(record.goals, peerGroup.map((peer) => peer.goals));
   const assistContributionScore = percentileRank(record.assists, peerGroup.map((peer) => peer.assists));
+  const starterShareScore = starterShareScoreFor(record);
   const leagueStrengthScore = 0.5;
   const clubStrengthScore = 0.5;
   const ageCurveScore = ageCurveScoreFor(record);
-  const available = [
+  const cardsDisciplineScore = cardsDisciplineScoreFor(record);
+  const availableSignalCount = [
     marketValuePercentile,
     appearanceVolumeScore,
     goalContributionScore,
     assistContributionScore,
+    starterShareScore,
     leagueStrengthScore,
     clubStrengthScore,
-    ageCurveScore
-  ].filter(
-    (value): value is number => value !== null
-  );
+    ageCurveScore,
+    cardsDisciplineScore
+  ].filter((value): value is number => value !== null).length;
   const weights = config.transfermarkt.annualSignalWeights;
-  const weighted =
-    (marketValuePercentile ?? average(available)) * weights.marketValuePercentile +
-    (appearanceVolumeScore ?? average(available)) * weights.appearanceVolume +
-    (goalContributionScore ?? average(available)) * weights.goalContribution +
-    (assistContributionScore ?? average(available)) * weights.assistContribution +
-    leagueStrengthScore * weights.leagueStrength +
-    clubStrengthScore * weights.clubStrength +
-    ageCurveScore * weights.ageCurve;
+  const weighted = weightedSignalAverage(
+    [
+      ["marketValuePercentile", marketValuePercentile, weights.marketValuePercentile],
+      ["appearanceVolume", appearanceVolumeScore, weights.appearanceVolume],
+      ["goalContribution", goalContributionScore, weights.goalContribution],
+      ["assistContribution", assistContributionScore, weights.assistContribution],
+      ["starterShare", starterShareScore, weights.starterShare],
+      ["leagueStrength", leagueStrengthScore, weights.leagueStrength],
+      ["clubStrength", clubStrengthScore, weights.clubStrength],
+      ["ageCurve", ageCurveScore, weights.ageCurve],
+      ["cardsDiscipline", cardsDisciplineScore, weights.cardsDiscipline]
+    ],
+    config.transfermarkt.normalizeAnnualWeightsOverAvailableSignals
+  );
   const availabilityPenalty =
     config.availabilityRules.enabled &&
     config.availabilityRules.lowAvailabilityAffects === "seasonScoreAndConfidence" &&
@@ -45,12 +53,27 @@ export function resolveTransfermarktSeasonBaseline(
 
   return {
     score,
-    confidence: marketValuePercentile !== null && appearanceVolumeScore !== null ? "HIGH" : available.length >= 2 ? "MEDIUM" : "LOW",
+    confidence: marketValuePercentile !== null && appearanceVolumeScore !== null ? "HIGH" : availableSignalCount >= 2 ? "MEDIUM" : "LOW",
     marketValuePercentile,
     appearancePercentile: appearanceVolumeScore,
     productionPercentile: nullableAverage(goalContributionScore, assistContributionScore),
     reason: "Transfermarkt percentile baseline; never raw market value as rating."
   };
+}
+
+function weightedSignalAverage(
+  signals: readonly (readonly [string, number | null, number])[],
+  normalizeWeightsOverAvailableSignals: boolean
+): number {
+  const available = signals.filter((signal): signal is readonly [string, number, number] => signal[1] !== null);
+  if (available.length === 0) return 0.35;
+  if (!normalizeWeightsOverAvailableSignals) {
+    const fallback = average(available.map(([, value]) => value));
+    return signals.reduce((sum, [, value, weight]) => sum + (value ?? fallback) * weight, 0);
+  }
+  const totalWeight = available.reduce((sum, [, , weight]) => sum + weight, 0);
+  if (totalWeight === 0) return average(available.map(([, value]) => value));
+  return available.reduce((sum, [, value, weight]) => sum + value * (weight / totalWeight), 0);
 }
 
 function percentileRank(value: number | null, values: readonly (number | null)[]): number | null {
@@ -73,6 +96,22 @@ function nullableAverage(left: number | null, right: number | null): number | nu
 
 function average(values: readonly number[]): number {
   return values.length === 0 ? 0.35 : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function starterShareScoreFor(record: TransfermarktPlayerSeason): number | null {
+  const starts = record.starterCount ?? 0;
+  const bench = record.benchCount ?? 0;
+  const total = starts + bench;
+  return total > 0 ? clamp(starts / total, 0, 1) : null;
+}
+
+function cardsDisciplineScoreFor(record: TransfermarktPlayerSeason): number | null {
+  const yellowCards = record.yellowCards ?? 0;
+  const redCards = record.redCards ?? 0;
+  if (yellowCards === 0 && redCards === 0 && record.appearances === null) return null;
+  const appearances = Math.max(record.appearances ?? 1, 1);
+  const penalty = clamp((yellowCards * 0.03 + redCards * 0.18) / appearances, 0, 0.35);
+  return 1 - penalty;
 }
 
 export function availabilityScore(record: TransfermarktPlayerSeason, config: RatingFormulaConfig): number | null {

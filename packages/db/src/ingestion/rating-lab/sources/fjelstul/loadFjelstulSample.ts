@@ -18,6 +18,7 @@ export type LoadFjelstulSampleOptions = {
   seed?: string;
   players?: string[];
   worldCupYears?: number[];
+  includeWomensWorldCups?: boolean;
 };
 
 export type FjelstulSourceReadiness = {
@@ -33,11 +34,31 @@ export type FjelstulSourceReadiness = {
   optionalGoalRowsRead: number;
   requiredSourceFilesLoaded: boolean;
   sourceWarnings: string[];
+  tournamentFilterSummary?: TournamentFilterRunSummary;
 };
 
 export type FjelstulSampleLoadResult = {
   cards: FjelstulCardContext[];
   sourceReadiness: FjelstulSourceReadiness;
+};
+
+export type TournamentFilterReportRow = {
+  worldCupYear: number;
+  tournamentId: string;
+  tournamentName: string;
+  genderOrCategory: "MEN" | "WOMEN" | "UNKNOWN";
+  included: boolean;
+  excludedReason: string;
+  cardCount: number;
+};
+
+export type TournamentFilterRunSummary = {
+  mode: "MEN_ONLY" | "INCLUDE_WOMENS_WORLD_CUPS";
+  includedMenWorldCupYears: number[];
+  excludedWomenWorldCupYears: number[];
+  totalCardsBeforeGenderFilter: number;
+  totalCardsAfterGenderFilter: number;
+  rows: TournamentFilterReportRow[];
 };
 
 type CsvRow = Record<string, string>;
@@ -54,6 +75,12 @@ type AwardWinnerIndex = {
 };
 
 type PlayerTournamentNationIndex = Map<string, string>;
+type TournamentInfo = {
+  id: string;
+  year: number;
+  name: string;
+  genderOrCategory: "MEN" | "WOMEN" | "UNKNOWN";
+};
 type HostResolution = {
   label: string;
   code: string;
@@ -127,6 +154,7 @@ export async function loadFjelstulSampleWithReadiness(
 
   const playersById = buildRowsById(playerRows, ["player_id", "player", "person_id", "id"]);
   const tournamentYearById = buildTournamentYearById(tournamentRows);
+  const tournamentInfoByYear = buildTournamentInfoByYear(tournamentRows);
   const teamCodeById = buildTeamCodeById(teamRows);
   const playerTournamentNationIndex = buildPlayerTournamentNationIndex({
     squadRows,
@@ -235,11 +263,19 @@ export async function loadFjelstulSampleWithReadiness(
     countsByIdentity.set(card.identityKey, (countsByIdentity.get(card.identityKey) ?? 0) + 1);
   }
 
-  const allCards = [...seen.values()].map((card) => ({
+  const unfilteredCards = [...seen.values()].map((card) => ({
     ...card,
     samePlayerEditionCount: countsByIdentity.get(card.identityKey) ?? 1,
     tournamentCount: countsByIdentity.get(card.identityKey) ?? 1
   }));
+  const tournamentFilterSummary = buildTournamentFilterSummary({
+    cards: unfilteredCards,
+    tournamentInfoByYear,
+    includeWomensWorldCups: options.includeWomensWorldCups ?? false
+  });
+  const allCards = unfilteredCards.filter(
+    (card) => options.includeWomensWorldCups || tournamentInfoByYear.get(card.worldCupYear)?.genderOrCategory !== "WOMEN"
+  );
 
   const requiredSourceFilesLoaded =
     playerRows.length > 0 && squadRows.length > 0 && tournamentRows.length > 0 && teamRows.length > 0;
@@ -258,7 +294,8 @@ export async function loadFjelstulSampleWithReadiness(
       optionalAppearanceRowsRead: appearanceRows.length,
       optionalGoalRowsRead: goalRows.length,
       requiredSourceFilesLoaded,
-      sourceWarnings: [...sourceWarnings].sort()
+      sourceWarnings: [...sourceWarnings].sort(),
+      tournamentFilterSummary
     }
   };
 }
@@ -428,6 +465,75 @@ function buildTournamentYearById(rows: readonly CsvRow[]): Map<string, number> {
     if (id && year) byId.set(normalizeName(id), year);
   }
   return byId;
+}
+
+function buildTournamentInfoByYear(rows: readonly CsvRow[]): Map<number, TournamentInfo> {
+  const byYear = new Map<number, TournamentInfo>();
+  for (const row of rows) {
+    const id = valueFor(row, ["tournament_id", "id"]) ?? "";
+    const year = yearForRow(row, new Map());
+    if (!year) continue;
+    const name = valueFor(row, ["tournament_name", "name", "tournament", "competition_name"]) ?? `World Cup ${year}`;
+    byYear.set(year, {
+      id,
+      year,
+      name,
+      genderOrCategory: tournamentGenderFor(row, name, year)
+    });
+  }
+  return byYear;
+}
+
+function tournamentGenderFor(row: CsvRow, name: string, year: number): TournamentInfo["genderOrCategory"] {
+  const category = normalizeName(
+    valueFor(row, ["gender", "category", "tournament_gender", "competition_gender", "sex"]) ?? name
+  );
+  if (category.includes("women") || category.includes("female")) return "WOMEN";
+  if (category.includes("men") || category.includes("male")) return "MEN";
+  if ([1991, 1995, 1999, 2003, 2007, 2011, 2015, 2019].includes(year)) return "WOMEN";
+  return "MEN";
+}
+
+function buildTournamentFilterSummary({
+  cards,
+  tournamentInfoByYear,
+  includeWomensWorldCups
+}: {
+  cards: readonly FjelstulCardContext[];
+  tournamentInfoByYear: ReadonlyMap<number, TournamentInfo>;
+  includeWomensWorldCups: boolean;
+}): TournamentFilterRunSummary {
+  const cardCountByYear = new Map<number, number>();
+  for (const card of cards) cardCountByYear.set(card.worldCupYear, (cardCountByYear.get(card.worldCupYear) ?? 0) + 1);
+
+  const rows = [...cardCountByYear.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([worldCupYear, cardCount]) => {
+      const info = tournamentInfoByYear.get(worldCupYear);
+      const isWomen = info?.genderOrCategory === "WOMEN";
+      return {
+        worldCupYear,
+        tournamentId: info?.id ?? "",
+        tournamentName: info?.name ?? `World Cup ${worldCupYear}`,
+        genderOrCategory: info?.genderOrCategory ?? "UNKNOWN",
+        included: includeWomensWorldCups || !isWomen,
+        excludedReason: !includeWomensWorldCups && isWomen ? "womens_world_cup_excluded_by_default" : "",
+        cardCount
+      };
+    });
+
+  return {
+    mode: includeWomensWorldCups ? "INCLUDE_WOMENS_WORLD_CUPS" : "MEN_ONLY",
+    includedMenWorldCupYears: rows
+      .filter((row) => row.included && row.genderOrCategory !== "WOMEN")
+      .map((row) => row.worldCupYear),
+    excludedWomenWorldCupYears: rows
+      .filter((row) => !row.included && row.genderOrCategory === "WOMEN")
+      .map((row) => row.worldCupYear),
+    totalCardsBeforeGenderFilter: cards.length,
+    totalCardsAfterGenderFilter: rows.filter((row) => row.included).reduce((sum, row) => sum + row.cardCount, 0),
+    rows
+  };
 }
 
 function buildTeamCodeById(rows: readonly CsvRow[]): Map<string, string> {

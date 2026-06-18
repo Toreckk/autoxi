@@ -42,14 +42,19 @@ export const prePhase1BCalibrationConfig = {
       }
     },
     annualSignalWeights: {
-      marketValuePercentile: 0.5,
-      appearanceVolume: 0.18,
+      marketValuePercentile: 0.38,
+      appearanceVolume: 0.2,
       goalContribution: 0.14,
       assistContribution: 0.08,
-      clubStrength: 0.04,
-      leagueStrength: 0.04,
-      ageCurve: 0.02
+      starterShare: 0.06,
+      clubStrength: 0.05,
+      leagueStrength: 0.05,
+      ageCurve: 0.02,
+      cardsDiscipline: 0.02
     },
+    normalizeAnnualWeightsOverAvailableSignals: true,
+    minimumSignalsForHighConfidenceRating: 3,
+    requiredSignalsForHighConfidenceRating: ["marketValuePercentile", "appearanceVolume"],
     confidenceMultipliers: {
       HIGH: 1,
       MEDIUM: 0.65,
@@ -110,13 +115,15 @@ export const prePhase1BCalibrationConfig = {
   },
   seasonAbilityWeights: {
     transfermarkt: {
-      marketValuePercentile: 0.45,
-      appearanceVolume: 0.16,
-      goalContribution: 0.13,
+      marketValuePercentile: 0.38,
+      appearanceVolume: 0.2,
+      goalContribution: 0.14,
       assistContribution: 0.08,
-      clubStrength: 0.06,
-      leagueStrength: 0.06,
-      ageCurve: 0.03,
+      starterShare: 0.06,
+      clubStrength: 0.05,
+      leagueStrength: 0.05,
+      ageCurve: 0.02,
+      cardsDiscipline: 0.02,
       transferSignal: 0.01,
       multiSeasonConsistency: 0.01,
       trendDirection: 0.01
@@ -142,10 +149,10 @@ export const prePhase1BCalibrationConfig = {
     generatedOnlyNoStrongSignalMax: 88,
     highRatingRequiresStrongSignalMin: 90,
     eliteRatingRequiresExceptionalSignalMin: 95,
-    generatedGoldenBallMax: 97,
-    generatedGoldenBootMax: 94,
-    generatedGoldenGloveMax: 93,
-    generatedBestYoungPlayerMax: 90
+    generatedGoldenBallMax: 99,
+    generatedGoldenBootMax: 99,
+    generatedGoldenGloveMax: 99,
+    generatedBestYoungPlayerMax: 99
   },
   adjustments: {
     leagueStrengthMaxBonus: 2,
@@ -183,7 +190,7 @@ export const conservativeHistoricalConfig = {
   caps: {
     ...prePhase1BCalibrationConfig.caps,
     generatedOnlyNoStrongSignalMax: 86,
-    generatedGoldenBootMax: 93
+    generatedGoldenBootMax: 99
   }
 } as const satisfies RatingFormulaConfig;
 

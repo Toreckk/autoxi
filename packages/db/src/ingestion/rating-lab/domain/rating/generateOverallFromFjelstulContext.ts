@@ -127,11 +127,15 @@ export function generateOverallFromFjelstulContext(
 }
 
 function generatedAwardCapForAwards(awards: readonly CardEditionKey[], config: RatingFormulaConfig): number | null {
-  if (awards.includes("GOLDEN_BALL")) return config.caps.generatedGoldenBallMax;
-  if (awards.includes("GOLDEN_BOOT")) return config.caps.generatedGoldenBootMax;
-  if (awards.includes("GOLDEN_GLOVE")) return config.caps.generatedGoldenGloveMax;
-  if (awards.includes("BEST_YOUNG_PLAYER")) return config.caps.generatedBestYoungPlayerMax;
+  if (awards.includes("GOLDEN_BALL")) return capBelowAbsoluteClamp(config.caps.generatedGoldenBallMax);
+  if (awards.includes("GOLDEN_BOOT")) return capBelowAbsoluteClamp(config.caps.generatedGoldenBootMax);
+  if (awards.includes("GOLDEN_GLOVE")) return capBelowAbsoluteClamp(config.caps.generatedGoldenGloveMax);
+  if (awards.includes("BEST_YOUNG_PLAYER")) return capBelowAbsoluteClamp(config.caps.generatedBestYoungPlayerMax);
   return null;
+}
+
+function capBelowAbsoluteClamp(value: number): number | null {
+  return value < 99 ? value : null;
 }
 
 function generatedRatingCap({

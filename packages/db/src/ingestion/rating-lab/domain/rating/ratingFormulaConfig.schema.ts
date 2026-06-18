@@ -31,10 +31,15 @@ export const RatingFormulaJsonSchema = z
         appearanceVolume: weightSchema,
         goalContribution: weightSchema,
         assistContribution: weightSchema,
+        starterShare: weightSchema,
         clubStrength: weightSchema,
         leagueStrength: weightSchema,
-        ageCurve: weightSchema
+        ageCurve: weightSchema,
+        cardsDiscipline: weightSchema
       }),
+      normalizeAnnualWeightsOverAvailableSignals: z.boolean().default(true),
+      minimumSignalsForHighConfidenceRating: z.number().int().min(1).max(20).default(3),
+      requiredSignalsForHighConfidenceRating: z.array(z.string()).default(["marketValuePercentile", "appearanceVolume"]),
       confidenceMultipliers: z.object({
         HIGH: weightSchema,
         MEDIUM: weightSchema,

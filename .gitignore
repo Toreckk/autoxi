@@ -39,5 +39,7 @@ Thumbs.db
 data/import-reports/
 data/sources/*
 !data/sources/README.md
+!data/sources/manual/
+!data/sources/manual/transfermarkt_identity_overrides.csv
 data/sources/fjelstul-worldcup/data-csv/
 packages/db/data/sources/fjelstul-worldcup/data-csv/

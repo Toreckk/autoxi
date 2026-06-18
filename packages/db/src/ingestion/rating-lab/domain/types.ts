@@ -333,6 +333,21 @@ export type RatingLabCardReport = {
   tmLeagueStrengthScore: number | null;
   tmClubStrengthScore: number | null;
   tmAgeCurveScore: number | null;
+  tmStarterShareScore: number | null;
+  tmCardsDisciplineScore: number | null;
+  transfermarktPlayerId: string;
+  transfermarktRatingConfidence: SourceConfidence;
+  transfermarktMatchFailureReason: string;
+  transfermarktSignalsAvailable: string;
+  transfermarktSignalsMissing: string;
+  transfermarktChangedRatingBy: number | null;
+  manualTransfermarktOverrideApplied: boolean;
+  manualTransfermarktOverrideReason: string;
+  awardMaxCapApplied: boolean;
+  absoluteClampApplied: boolean;
+  rating99Eligible: boolean;
+  rating99EligibilityReason: string;
+  exceptionalSignals: string;
   tmMarketValueTrend: string;
   tmProductionTrend: string;
   tmMinutesTrend: string;
@@ -381,6 +396,14 @@ export type RatingLabCardSnapshot = {
   finalBlendedRating?: number;
   transfermarktMatchConfidence?: SourceConfidence;
   transfermarktCoverage?: number | null;
+  transfermarktPlayerId?: string;
+  transfermarktRatingConfidence?: SourceConfidence;
+  transfermarktMatchFailureReason?: string;
+  transfermarktSignalsAvailable?: string;
+  transfermarktSignalsMissing?: string;
+  transfermarktChangedRatingBy?: number | null;
+  rating99Eligible?: boolean;
+  rating99EligibilityReason?: string;
   trendAdjustment?: number;
   capsApplied?: string;
   evidenceSummary?: string;
@@ -531,6 +554,24 @@ export type RatingLabSummary = {
   sourceDir: string;
   sourceAvailability?: RatingLabSourceAvailability[];
   distributionDiagnostics?: RatingDistributionDiagnostics;
+  tournamentFilterMode?: string;
+  tournamentFilterSummary?: {
+    includedMenWorldCupYears: number[];
+    excludedWomenWorldCupYears: number[];
+    totalCardsBeforeGenderFilter: number;
+    totalCardsAfterGenderFilter: number;
+  };
+  tournamentFilterRows?: Array<{
+    worldCupYear: number;
+    tournamentId: string;
+    tournamentName: string;
+    genderOrCategory: string;
+    included: boolean;
+    excludedReason: string;
+    cardCount: number;
+  }>;
+  transfermarktCoverageByEra?: TransfermarktCoverageSummary[];
+  transfermarktCoverageByWorldCupYear?: TransfermarktCoverageSummary[];
   sampleMode: string;
   seed: string;
   totalCardsSampled: number;
@@ -589,4 +630,16 @@ export type RatingLabSummary = {
   sevenAZeroManualDeltaP90: number | null;
   confidenceGateStatus: "READY_FOR_PHASE_1B" | "NEEDS_TUNING" | "BLOCKED_BY_SOURCE_QUALITY";
   confidenceGateReasons: string[];
+};
+
+export type TransfermarktCoverageSummary = {
+  key: string;
+  totalMaleCards: number;
+  highTransfermarktMatches: number;
+  mediumTransfermarktMatches: number;
+  lowTransfermarktMatches: number;
+  noTransfermarktMatch: number;
+  highMatchRate: number;
+  mediumOrBetterRate: number;
+  manualOverrideCount: number;
 };

@@ -21,7 +21,8 @@ import type {
   RatingLabSummary,
   ResolvedRating,
   SevenAZeroComparison,
-  SevenAZeroManualReferenceResult
+  SevenAZeroManualReferenceResult,
+  TransfermarktCoverageSummary
 } from "../domain/types.js";
 import { countBy } from "../utils.js";
 
@@ -114,6 +115,21 @@ const CSV_COLUMNS = [
   "tmLeagueStrengthScore",
   "tmClubStrengthScore",
   "tmAgeCurveScore",
+  "tmStarterShareScore",
+  "tmCardsDisciplineScore",
+  "transfermarktPlayerId",
+  "transfermarktRatingConfidence",
+  "transfermarktMatchFailureReason",
+  "transfermarktSignalsAvailable",
+  "transfermarktSignalsMissing",
+  "transfermarktChangedRatingBy",
+  "manualTransfermarktOverrideApplied",
+  "manualTransfermarktOverrideReason",
+  "awardMaxCapApplied",
+  "absoluteClampApplied",
+  "rating99Eligible",
+  "rating99EligibilityReason",
+  "exceptionalSignals",
   "tmMarketValueTrend",
   "tmProductionTrend",
   "tmMinutesTrend",
@@ -245,6 +261,25 @@ export function toCardReport({
     tmLeagueStrengthScore: numericSignal(tmSignals, "leagueStrengthScore"),
     tmClubStrengthScore: numericSignal(tmSignals, "clubStrengthScore"),
     tmAgeCurveScore: numericSignal(tmSignals, "ageCurveScore"),
+    tmStarterShareScore: numericSignal(tmSignals, "starterShareScore"),
+    tmCardsDisciplineScore: numericSignal(tmSignals, "cardsDisciplineScore"),
+    transfermarktPlayerId: stringSignal(tmSignals, "transfermarktPlayerId"),
+    transfermarktRatingConfidence: stringSignal(tmSignals, "transfermarktRatingConfidence", "NONE") as RatingLabCardReport["transfermarktRatingConfidence"],
+    transfermarktMatchFailureReason: stringSignal(tmSignals, "transfermarktMatchFailureReason"),
+    transfermarktSignalsAvailable: stringSignal(tmSignals, "signalsAvailable"),
+    transfermarktSignalsMissing: stringSignal(tmSignals, "signalsMissing"),
+    transfermarktChangedRatingBy:
+      breakdown?.transfermarktRating !== null && breakdown?.transfermarktRating !== undefined && breakdown.worldCupPerformanceRating !== null
+        ? breakdown.finalOverall - breakdown.worldCupPerformanceRating
+        : null,
+    manualTransfermarktOverrideApplied: stringSignal(tmSignals, "manualTransfermarktOverrideApplied") === "true",
+    manualTransfermarktOverrideReason: stringSignal(tmSignals, "manualTransfermarktOverrideReason"),
+    awardMaxCapApplied: (breakdown?.capsApplied ?? []).some((cap) => cap.includes("award")),
+    absoluteClampApplied:
+      breakdown?.finalOverallBeforeCaps !== undefined && breakdown.finalOverallBeforeCaps !== breakdown.finalOverall,
+    rating99Eligible: isRating99Eligible(context, resolved),
+    rating99EligibilityReason: rating99EligibilityReason(context, resolved),
+    exceptionalSignals: exceptionalSignals(context, resolved).join("|"),
     tmMarketValueTrend: stringSignal(tmSignals, "tmMarketValueTrend", "UNKNOWN"),
     tmProductionTrend: stringSignal(tmSignals, "tmProductionTrend", "UNKNOWN"),
     tmMinutesTrend: stringSignal(tmSignals, "tmMinutesTrend", "UNKNOWN"),
@@ -331,6 +366,36 @@ export function buildReports({
   };
 }
 
+function isRating99Eligible(context: FjelstulCardContext, resolved: ResolvedRating): boolean {
+  return exceptionalSignals(context, resolved).length > 0;
+}
+
+function rating99EligibilityReason(context: FjelstulCardContext, resolved: ResolvedRating): string {
+  const signals = exceptionalSignals(context, resolved);
+  if (signals.length === 0) return "no_exceptional_signal";
+  return `eligible:${signals.join("|")}`;
+}
+
+function exceptionalSignals(context: FjelstulCardContext, resolved: ResolvedRating): string[] {
+  const signals: string[] = [];
+  if (resolved.primarySource === "MANUAL_CURATED" && resolved.overall >= 97) signals.push("manualAllTimeBenchmark");
+  if (context.awards.includes("GOLDEN_BALL") && (context.minutes ?? 0) >= 450 && (context.goals ?? 0) >= 3) {
+    signals.push("goldenBallPlusEliteWorldCupPerformance");
+  }
+  if (context.teamResult === "CHAMPION" && context.awards.includes("GOLDEN_BALL")) {
+    signals.push("worldCupWinnerPlusTournamentMVP");
+  }
+  if ((context.goals ?? 0) >= 8) signals.push("worldCupRecordOrHistoricTournament");
+  if (
+    resolved.breakdown?.appliedSources.some(
+      (source) => source.sourceKey === "TRANSFERMARKT" && source.confidence === "HIGH" && source.rating >= 97
+    )
+  ) {
+    signals.push("highConfidenceExternalRating");
+  }
+  return signals;
+}
+
 export async function writeRatingLabReports({
   reports,
   outputDir = "data/import-reports/rating-lab",
@@ -355,13 +420,20 @@ export async function writeRatingLabReports({
     [`rating-lab-anomalies-${timestamp}.csv`, toCsv(reports.anomalies)],
     [`rating-lab-source-availability-${timestamp}.csv`, sourceAvailabilityToCsv(reports.sourceAvailability)],
     [`rating-lab-source-matches-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktMatchConfidence !== "NONE"))],
+    [`rating-lab-transfermarkt-match-diagnostics-${timestamp}.csv`, toCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-unmatched-by-reason-${timestamp}.csv`, unmatchedByReasonToCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-signal-coverage-${timestamp}.csv`, signalCoverageToCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-coverage-by-era-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByEra ?? [])],
+    [`rating-lab-transfermarkt-coverage-by-world-cup-year-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByWorldCupYear ?? [])],
     [`rating-lab-transfermarkt-baselines-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktRating !== null))],
     [`rating-lab-transfermarkt-multi-season-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.tmWeightedMultiSeasonScore !== null))],
     [`rating-lab-top-100-raw-evidence-${timestamp}.csv`, toCsv([...reports.allCards].sort((left, right) => right.rawEvidenceOverall - left.rawEvidenceOverall).slice(0, 100))],
     [`rating-lab-low-confidence-elites-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.overall >= 90 && card.confidence !== "HIGH"))],
     [`rating-lab-rating-distribution-buckets-${timestamp}.csv`, distributionBucketsToCsv(reports.distributionBuckets)],
     [`rating-lab-rating-distribution-groups-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)],
-    [`rating-lab-distribution-summary-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)]
+    [`rating-lab-distribution-summary-${timestamp}.csv`, distributionGroupsToCsv(reports.distributionGroups)],
+    [`rating-lab-rating-cap-events-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.awardMaxCapApplied || card.absoluteClampApplied || card.capsApplied))],
+    [`rating-lab-tournament-filter-summary-${timestamp}.csv`, tournamentFilterToCsv(reports.summary)]
   ] as const;
 
   const paths: string[] = [];
@@ -434,6 +506,18 @@ function buildSummary({
     sourceDir,
     sourceAvailability: [...(sourceAvailability ?? [])],
     distributionDiagnostics,
+    tournamentFilterMode: sourceReadiness?.tournamentFilterSummary?.mode,
+    tournamentFilterSummary: sourceReadiness?.tournamentFilterSummary
+      ? {
+          includedMenWorldCupYears: sourceReadiness.tournamentFilterSummary.includedMenWorldCupYears,
+          excludedWomenWorldCupYears: sourceReadiness.tournamentFilterSummary.excludedWomenWorldCupYears,
+          totalCardsBeforeGenderFilter: sourceReadiness.tournamentFilterSummary.totalCardsBeforeGenderFilter,
+          totalCardsAfterGenderFilter: sourceReadiness.tournamentFilterSummary.totalCardsAfterGenderFilter
+        }
+      : undefined,
+    tournamentFilterRows: sourceReadiness?.tournamentFilterSummary?.rows,
+    transfermarktCoverageByEra: buildTransfermarktCoverageByEra(cards),
+    transfermarktCoverageByWorldCupYear: buildTransfermarktCoverageByYear(cards),
     sampleMode,
     seed,
     totalCardsSampled: cards.length,
@@ -595,6 +679,14 @@ function toSnapshot(card: RatingLabCardReport): RatingLabCardSnapshot {
     finalBlendedRating: card.finalBlendedRating,
     transfermarktMatchConfidence: card.transfermarktMatchConfidence,
     transfermarktCoverage: card.transfermarktCoverage,
+    transfermarktPlayerId: card.transfermarktPlayerId,
+    transfermarktRatingConfidence: card.transfermarktRatingConfidence,
+    transfermarktMatchFailureReason: card.transfermarktMatchFailureReason,
+    transfermarktSignalsAvailable: card.transfermarktSignalsAvailable,
+    transfermarktSignalsMissing: card.transfermarktSignalsMissing,
+    transfermarktChangedRatingBy: card.transfermarktChangedRatingBy,
+    rating99Eligible: card.rating99Eligible,
+    rating99EligibilityReason: card.rating99EligibilityReason,
     trendAdjustment: card.trendAdjustment,
     capsApplied: card.capsApplied,
     evidenceSummary: card.evidenceSummary,
@@ -616,6 +708,46 @@ function flattenDistributionGroups(
 
 function prefixGroups(prefix: string, groups: readonly DistributionGroup[]): DistributionGroup[] {
   return groups.map((group) => ({ ...group, key: `${prefix}:${group.key}` }));
+}
+
+function buildTransfermarktCoverageByEra(cards: readonly RatingLabCardReport[]): TransfermarktCoverageSummary[] {
+  return Object.entries(groupBy(cards, (card) => eraBucket(card.worldCupYear)))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, group]) => transfermarktCoverageSummary(key, group));
+}
+
+function buildTransfermarktCoverageByYear(cards: readonly RatingLabCardReport[]): TransfermarktCoverageSummary[] {
+  return Object.entries(groupBy(cards, (card) => String(card.worldCupYear)))
+    .sort(([left], [right]) => Number(left) - Number(right))
+    .map(([key, group]) => transfermarktCoverageSummary(key, group));
+}
+
+function transfermarktCoverageSummary(key: string, cards: readonly RatingLabCardReport[]): TransfermarktCoverageSummary {
+  const high = cards.filter((card) => card.transfermarktMatchConfidence === "HIGH").length;
+  const medium = cards.filter((card) => card.transfermarktMatchConfidence === "MEDIUM").length;
+  const low = cards.filter((card) => card.transfermarktMatchConfidence === "LOW").length;
+  const none = cards.length - high - medium - low;
+  return {
+    key,
+    totalMaleCards: cards.length,
+    highTransfermarktMatches: high,
+    mediumTransfermarktMatches: medium,
+    lowTransfermarktMatches: low,
+    noTransfermarktMatch: none,
+    highMatchRate: rate(high, cards.length),
+    mediumOrBetterRate: rate(high + medium, cards.length),
+    manualOverrideCount: cards.filter((card) => card.manualTransfermarktOverrideApplied).length
+  };
+}
+
+function eraBucket(year: number): string {
+  if (year <= 1966) return "1930-1966";
+  if (year <= 1990) return "1970-1990";
+  return "1994-2022";
+}
+
+function rate(count: number, total: number): number {
+  return total === 0 ? 0 : Number((count / total).toFixed(4));
 }
 
 function sourceAvailabilityToCsv(rows: readonly RatingLabSourceAvailability[]): string {
@@ -651,6 +783,82 @@ function distributionGroupsToCsv(rows: readonly DistributionGroup[]): string {
   const lines = ["key,totalCards,count90Plus,count95Plus,count99"];
   for (const row of rows) {
     lines.push([row.key, row.totalCards, row.count90Plus, row.count95Plus, row.count99].map(csvCell).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function tournamentFilterToCsv(summary: RatingLabSummary): string {
+  const lines = ["worldCupYear,tournamentId,tournamentName,genderOrCategory,included,excludedReason,cardCount"];
+  const filterRows = summary.tournamentFilterRows ?? [];
+  for (const row of filterRows) {
+    lines.push(
+      [
+        row.worldCupYear,
+        row.tournamentId,
+        row.tournamentName,
+        row.genderOrCategory,
+        String(row.included),
+        row.excludedReason,
+        row.cardCount
+      ]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function unmatchedByReasonToCsv(cards: readonly RatingLabCardReport[]): string {
+  const unmatched = cards.filter((card) => card.transfermarktMatchConfidence === "NONE" || card.transfermarktMatchFailureReason);
+  const counts = countBy(unmatched, (card) => card.transfermarktMatchFailureReason || "no_transfermarkt_match");
+  const lines = ["reason,count"];
+  for (const [reason, count] of Object.entries(counts).sort((left, right) => right[1] - left[1])) {
+    lines.push([reason, count].map(csvCell).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function signalCoverageToCsv(cards: readonly RatingLabCardReport[]): string {
+  const signalNames = new Set<string>();
+  for (const card of cards) {
+    for (const signal of card.transfermarktSignalsAvailable.split("|").filter(Boolean)) signalNames.add(signal);
+    for (const signal of card.transfermarktSignalsMissing.split("|").filter(Boolean)) signalNames.add(signal);
+  }
+  const lines = ["signal,availableCount,missingCount"];
+  for (const signal of [...signalNames].sort()) {
+    lines.push(
+      [
+        signal,
+        cards.filter((card) => card.transfermarktSignalsAvailable.split("|").includes(signal)).length,
+        cards.filter((card) => card.transfermarktSignalsMissing.split("|").includes(signal)).length
+      ]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function coverageSummaryToCsv(rows: readonly TransfermarktCoverageSummary[]): string {
+  const lines = [
+    "key,totalMaleCards,highTransfermarktMatches,mediumTransfermarktMatches,lowTransfermarktMatches,noTransfermarktMatch,highMatchRate,mediumOrBetterRate,manualOverrideCount"
+  ];
+  for (const row of rows) {
+    lines.push(
+      [
+        row.key,
+        row.totalMaleCards,
+        row.highTransfermarktMatches,
+        row.mediumTransfermarktMatches,
+        row.lowTransfermarktMatches,
+        row.noTransfermarktMatch,
+        row.highMatchRate,
+        row.mediumOrBetterRate,
+        row.manualOverrideCount
+      ]
+        .map(csvCell)
+        .join(",")
+    );
   }
   return `${lines.join("\n")}\n`;
 }

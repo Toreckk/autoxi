@@ -21,14 +21,19 @@
       }
     },
     "annualSignalWeights": {
-      "marketValuePercentile": 0.5,
-      "appearanceVolume": 0.18,
+      "marketValuePercentile": 0.38,
+      "appearanceVolume": 0.2,
       "goalContribution": 0.14,
       "assistContribution": 0.08,
-      "clubStrength": 0.04,
-      "leagueStrength": 0.04,
-      "ageCurve": 0.02
+      "starterShare": 0.06,
+      "clubStrength": 0.05,
+      "leagueStrength": 0.05,
+      "ageCurve": 0.02,
+      "cardsDiscipline": 0.02
     },
+    "normalizeAnnualWeightsOverAvailableSignals": true,
+    "minimumSignalsForHighConfidenceRating": 3,
+    "requiredSignalsForHighConfidenceRating": ["marketValuePercentile", "appearanceVolume"],
     "confidenceMultipliers": {
       "HIGH": 1,
       "MEDIUM": 0.65,

@@ -13,6 +13,8 @@ type PlayerMeta = {
   normalizedName: string;
   nation?: string;
   birthYear?: number;
+  position?: string;
+  subPosition?: string;
   clubName?: string;
   leagueName?: string;
 };
@@ -21,10 +23,16 @@ type SeasonAccumulator = {
   meta: PlayerMeta;
   seasonYear: number;
   marketValueEur: number | null;
+  highestMarketValueEur: number | null;
   appearances: number;
   goals: number;
   assists: number;
   minutes: number;
+  yellowCards: number;
+  redCards: number;
+  starterCount: number;
+  benchCount: number;
+  captainCount: number;
 };
 
 export async function loadTransfermarktSeasons(
@@ -49,18 +57,28 @@ export async function loadTransfermarktSeasons(
   const seasons = new Map<string, SeasonAccumulator>();
   await loadValuations({ sourceDir, years, players, targetIds, seasons, peerRowsPerYear: options.peerRowsPerYear ?? 1000 });
   await loadAppearances({ sourceDir, years, players, targetIds, seasons, peerRowsPerYear: options.peerRowsPerYear ?? 1000 });
+  await loadLineups({ sourceDir, years, players, targetIds, seasons, peerRowsPerYear: options.peerRowsPerYear ?? 1000 });
 
   return [...seasons.values()].map((season) => ({
+    playerId: season.meta.playerId,
     playerName: season.meta.playerName,
     normalizedName: season.meta.normalizedName,
     nation: season.meta.nation,
     seasonYear: season.seasonYear,
     birthYear: season.meta.birthYear,
+    position: season.meta.position,
+    subPosition: season.meta.subPosition,
     marketValueEur: season.marketValueEur,
+    highestMarketValueEur: season.highestMarketValueEur,
     appearances: season.appearances || null,
     goals: season.goals || null,
     assists: season.assists || null,
     minutes: season.minutes || null,
+    yellowCards: season.yellowCards || null,
+    redCards: season.redCards || null,
+    starterCount: season.starterCount || null,
+    benchCount: season.benchCount || null,
+    captainCount: season.captainCount || null,
     clubName: season.meta.clubName,
     leagueName: season.meta.leagueName
   }));
@@ -80,6 +98,8 @@ async function loadPlayers(sourceDir: string): Promise<Map<string, PlayerMeta>> 
       normalizedName: normalizeName(playerName),
       nation: valueFor(row, ["country_of_citizenship", "country_of_birth"]),
       birthYear: yearFromValue(valueFor(row, ["date_of_birth"])) ?? undefined,
+      position: valueFor(row, ["position"]),
+      subPosition: valueFor(row, ["sub_position"]),
       clubName: valueFor(row, ["current_club_name"]),
       leagueName: valueFor(row, ["current_club_domestic_competition_id"])
     });
@@ -115,6 +135,7 @@ async function loadValuations({
     const season = seasonFor(seasons, meta, year);
     const value = numberFor(row, ["market_value_in_eur", "market_value_eur", "market_value"]);
     if (value !== null) season.marketValueEur = Math.max(season.marketValueEur ?? 0, value);
+    if (value !== null) season.highestMarketValueEur = Math.max(season.highestMarketValueEur ?? 0, value);
   }
 }
 
@@ -147,6 +168,42 @@ async function loadAppearances({
     season.goals += numberFor(row, ["goals"]) ?? 0;
     season.assists += numberFor(row, ["assists"]) ?? 0;
     season.minutes += numberFor(row, ["minutes_played", "minutes", "mins"]) ?? 0;
+    season.yellowCards += numberFor(row, ["yellow_cards"]) ?? 0;
+    season.redCards += numberFor(row, ["red_cards"]) ?? 0;
+  }
+}
+
+async function loadLineups({
+  sourceDir,
+  years,
+  players,
+  targetIds,
+  seasons,
+  peerRowsPerYear
+}: {
+  sourceDir: string;
+  years: ReadonlySet<number>;
+  players: ReadonlyMap<string, PlayerMeta>;
+  targetIds: ReadonlySet<string>;
+  seasons: Map<string, SeasonAccumulator>;
+  peerRowsPerYear: number;
+}): Promise<void> {
+  const path = join(sourceDir, "game_lineups.csv");
+  if (!(await exists(path))) return;
+  const peerCounts = new Map<number, number>();
+  for await (const row of streamCsv(path)) {
+    const playerId = valueFor(row, ["player_id"]);
+    const year = yearFromValue(valueFor(row, ["date"]));
+    if (!playerId || year === null || (years.size > 0 && !years.has(year))) continue;
+    const meta = players.get(playerId) ?? metaFromAppearanceRow(playerId, row);
+    if (!shouldKeepRow(playerId, year, targetIds, peerCounts, peerRowsPerYear)) continue;
+    const season = seasonFor(seasons, meta, year);
+    const type = normalizeName(valueFor(row, ["type"]) ?? "");
+    if (type.includes("start") || type === "starting lineup") season.starterCount += 1;
+    if (type.includes("sub") || type.includes("bench")) season.benchCount += 1;
+    if (normalizeName(valueFor(row, ["team_captain"]) ?? "") === "1" || normalizeName(valueFor(row, ["team_captain"]) ?? "") === "true") {
+      season.captainCount += 1;
+    }
   }
 }
 
@@ -158,10 +215,16 @@ function seasonFor(seasons: Map<string, SeasonAccumulator>, meta: PlayerMeta, se
     meta,
     seasonYear,
     marketValueEur: null,
+    highestMarketValueEur: null,
     appearances: 0,
     goals: 0,
     assists: 0,
-    minutes: 0
+    minutes: 0,
+    yellowCards: 0,
+    redCards: 0,
+    starterCount: 0,
+    benchCount: 0,
+    captainCount: 0
   };
   seasons.set(key, created);
   return created;

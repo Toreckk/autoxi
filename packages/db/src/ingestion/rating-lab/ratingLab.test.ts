@@ -52,6 +52,8 @@ import { createRetroReferenceAdapter } from "./sources/retro/retroReferenceAdapt
 import { profileRegisteredSources } from "./sources/sourceRegistry.js";
 import { profileTransfermarktSource } from "./sources/transfermarkt/transfermarktProfiler.js";
 import { matchTransfermarktPlayer } from "./sources/transfermarkt/transfermarktMatcher.js";
+import { resolveFlagCode } from "./sources/nations/flagCodeResolver.js";
+import { createStaticNationAliasIndex, normalizeNationToCode } from "./sources/nations/normalizeNation.js";
 import { resolveTransfermarktSeasonBaseline } from "./sources/transfermarkt/transfermarktSeasonBaseline.js";
 import {
   resolveTransfermarktMultiSeasonBaseline,
@@ -161,6 +163,42 @@ describe("rating lab spike", () => {
     expect(sourceReadiness.sourceWarnings).not.toContain("player_tournament_nation_unresolved");
   });
 
+  it("excludes women's World Cup tournament years by default and reports the denominator", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-gender-filter-"));
+    await writeFixtureCsv(dir, "players.csv", [
+      "player_id,given_name,family_name",
+      "m1,Men,Player",
+      "w1,Women,Player"
+    ]);
+    await writeFixtureCsv(dir, "squads.csv", [
+      "player_id,tournament_id,team_id,position",
+      "m1,wc1994,usa,CM",
+      "w1,wwc1999,usa,CM"
+    ]);
+    await writeFixtureCsv(dir, "tournaments.csv", [
+      "tournament_id,year,tournament_name,gender",
+      "wc1994,1994,FIFA World Cup,men",
+      "wwc1999,1999,FIFA Women's World Cup,women"
+    ]);
+    await writeFixtureCsv(dir, "teams.csv", ["team_id,team_code", "usa,USA"]);
+
+    const defaultLoad = await loadFjelstulSampleWithReadiness({ sourceDir: dir, sample: "all", seed: "test" });
+    const includeWomen = await loadFjelstulSampleWithReadiness({
+      sourceDir: dir,
+      sample: "all",
+      seed: "test",
+      includeWomensWorldCups: true
+    });
+
+    expect(defaultLoad.cards.map((card) => card.worldCupYear)).toEqual([1994]);
+    expect(defaultLoad.sourceReadiness.tournamentFilterSummary).toMatchObject({
+      totalCardsBeforeGenderFilter: 2,
+      totalCardsAfterGenderFilter: 1,
+      excludedWomenWorldCupYears: [1999]
+    });
+    expect(includeWomen.cards.map((card) => card.worldCupYear).sort()).toEqual([1994, 1999]);
+  });
+
   it("does not treat player as a display-name field", () => {
     expect(playerDisplayNameFromRow({ player: "p123" })).toBe("Unknown Player");
     expect(playerDisplayNameFromRow({ player: "p123", given_name: "Diego", family_name: "Maradona" })).toBe("Diego Maradona");
@@ -251,12 +289,13 @@ describe("rating lab spike", () => {
     expect(result.overall).toBeGreaterThanOrEqual(95);
   });
 
-  it("caps generated Golden Boot ratings below all-time icon range without manual evidence", () => {
+  it("does not cap generated Golden Boot ratings below the absolute 99 clamp", () => {
     const result = generateOverallFromFjelstulContext(
       cardContext({ awards: ["GOLDEN_BOOT"], goals: 8, teamResult: "CHAMPION", appearances: 7, minutes: 630 })
     );
 
-    expect(result.overall).toBeLessThanOrEqual(94);
+    expect(result.reasons).not.toContain("generated award cap applied");
+    expect(result.overall).toBeLessThanOrEqual(99);
   });
 
   it("generates deterministic profile-specific stats and estimates overall", () => {
@@ -1112,18 +1151,81 @@ describe("rating lab spike", () => {
   it("matches Transfermarkt candidates at high, medium, and low confidence", () => {
     const context = cardContext({ internalRawName: "Diego Armando Maradona", nation: "ARG", worldCupYear: 1982 });
     const candidates = matchTransfermarktPlayer(context, [
-      { playerName: "Diego Armando Maradona", normalizedName: "diego armando maradona", nation: "ARG", seasonYear: 1982, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 },
-      { playerName: "Diego Maradona", normalizedName: "diego maradona", nation: "ARG", seasonYear: 1984, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 },
-      { playerName: "Maradona", normalizedName: "maradona", nation: "BRA", seasonYear: 1978, marketValueEur: 1, appearances: 1, goals: 1, assists: 1, minutes: 90 }
+      tmSeason("Diego Armando Maradona", 1982, 1, 90),
+      tmSeason("Diego Maradona", 1984, 1, 90),
+      tmSeason("Maradona", 1978, 1, 90, { nation: "BRA" })
     ]);
 
     expect(candidates.map((candidate) => candidate.confidence)).toEqual(["HIGH", "MEDIUM", "LOW"]);
   });
 
+  it("centralizes nation aliases and resolves FIFA flag codes for preview assets", () => {
+    const aliases = createStaticNationAliasIndex();
+
+    expect(normalizeNationToCode("Argentina", aliases)).toBe("ARG");
+    expect(normalizeNationToCode("Germany", aliases)).toBe("DEU");
+    expect(normalizeNationToCode("West Germany", aliases)).toBe("DEU");
+    expect(normalizeNationToCode("FRG", aliases)).toBe("DEU");
+    expect(resolveFlagCode("DEU")).toBe("de");
+    expect(resolveFlagCode("ARG")).toBe("ar");
+  });
+
+  it("uses Transfermarkt playerId instead of normalized name for multi-season grouping", () => {
+    const context = cardContext({
+      internalRawName: "Shared Name",
+      nation: "ARG",
+      worldCupYear: 2022,
+      birthYear: 1994
+    });
+    const records = [
+      { ...tmSeason("Shared Name", 2019, 100, 1800), playerId: "target" },
+      { ...tmSeason("Shared Name", 2020, 200, 1800), playerId: "other" },
+      { ...tmSeason("Shared Name", 2021, 300, 1800), playerId: "other" },
+      { ...tmSeason("Shared Name", 2022, 400, 1800), playerId: "target" }
+    ];
+    const candidate = {
+      ...matchTransfermarktPlayer(context, records)[0]!,
+      record: records[0]!,
+      transfermarktPlayerId: "target"
+    };
+    const rating = resolveTransfermarktRating({ context, candidate, records });
+
+    expect(rating?.reasons).toContain("available_years:2019|2022");
+    expect(rating?.signals.transfermarktPlayerId).toBe("target");
+  });
+
+  it("does not grant high Transfermarkt rating confidence from market value alone", () => {
+    const context = cardContext({
+      internalRawName: "Market Only",
+      nation: "ARG",
+      worldCupYear: 2022,
+      birthYear: 1994
+    });
+    const records = [
+      {
+        ...tmSeason("Market Only", 2022, 400, 0),
+        appearances: null,
+        minutes: null,
+        goals: null,
+        assists: null,
+        starterCount: null,
+        benchCount: null,
+        yellowCards: null,
+        redCards: null
+      }
+    ];
+    const candidate = matchTransfermarktPlayer(context, records)[0]!;
+    const rating = resolveTransfermarktRating({ context, candidate, records });
+
+    expect(rating?.matchConfidence).toBe("HIGH");
+    expect(rating?.confidence).not.toBe("HIGH");
+    expect(rating?.warnings).toContain("insufficient_rating_signals");
+  });
+
   it("turns Transfermarkt raw values into percentiles and multi-season trends", () => {
     const peerGroup = [
-      { playerName: "A", normalizedName: "a", seasonYear: 1982, marketValueEur: 1, appearances: 1, goals: 0, assists: 0, minutes: 90 },
-      { playerName: "B", normalizedName: "b", seasonYear: 1982, marketValueEur: 10, appearances: 10, goals: 3, assists: 2, minutes: 900 }
+      tmSeason("A", 1982, 1, 90, { goals: 0, assists: 0, appearances: 1 }),
+      tmSeason("B", 1982, 10, 900, { goals: 3, assists: 2, appearances: 10 })
     ];
     const baseline = resolveTransfermarktSeasonBaseline(peerGroup[1]!, peerGroup);
     const multiSeason = resolveTransfermarktMultiSeasonBaseline({
@@ -1393,6 +1495,21 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     tmLeagueStrengthScore: overrides.tmLeagueStrengthScore ?? null,
     tmClubStrengthScore: overrides.tmClubStrengthScore ?? null,
     tmAgeCurveScore: overrides.tmAgeCurveScore ?? null,
+    tmStarterShareScore: overrides.tmStarterShareScore ?? null,
+    tmCardsDisciplineScore: overrides.tmCardsDisciplineScore ?? null,
+    transfermarktPlayerId: overrides.transfermarktPlayerId ?? "",
+    transfermarktRatingConfidence: overrides.transfermarktRatingConfidence ?? "NONE",
+    transfermarktMatchFailureReason: overrides.transfermarktMatchFailureReason ?? "",
+    transfermarktSignalsAvailable: overrides.transfermarktSignalsAvailable ?? "",
+    transfermarktSignalsMissing: overrides.transfermarktSignalsMissing ?? "",
+    transfermarktChangedRatingBy: overrides.transfermarktChangedRatingBy ?? null,
+    manualTransfermarktOverrideApplied: overrides.manualTransfermarktOverrideApplied ?? false,
+    manualTransfermarktOverrideReason: overrides.manualTransfermarktOverrideReason ?? "",
+    awardMaxCapApplied: overrides.awardMaxCapApplied ?? false,
+    absoluteClampApplied: overrides.absoluteClampApplied ?? false,
+    rating99Eligible: overrides.rating99Eligible ?? false,
+    rating99EligibilityReason: overrides.rating99EligibilityReason ?? "",
+    exceptionalSignals: overrides.exceptionalSignals ?? "",
     tmMarketValueTrend: overrides.tmMarketValueTrend ?? "UNKNOWN",
     tmProductionTrend: overrides.tmProductionTrend ?? "UNKNOWN",
     tmMinutesTrend: overrides.tmMinutesTrend ?? "UNKNOWN",
@@ -1426,16 +1543,23 @@ function tmSeason(
   }> = {}
 ) {
   return {
+    playerId: overrides.normalizedName ?? playerName.toLowerCase(),
     playerName,
     normalizedName: overrides.normalizedName ?? playerName.toLowerCase(),
     nation: overrides.nation ?? "ARG",
     seasonYear,
     birthYear: overrides.birthYear,
     marketValueEur,
+    highestMarketValueEur: marketValueEur,
     appearances: overrides.appearances ?? 30,
     goals: overrides.goals ?? 10,
     assists: overrides.assists ?? 8,
     minutes,
+    yellowCards: 0,
+    redCards: 0,
+    starterCount: overrides.appearances ?? 30,
+    benchCount: 0,
+    captainCount: 0,
     clubName: "Fixture FC",
     leagueName: "Fixture League"
   };
@@ -1460,14 +1584,19 @@ function formulaJsonFixture(overrides: Record<string, unknown> = {}): any {
         weights: { oldest: 0.1, twoBack: 0.2, previous: 0.3, worldCupYear: 0.4 }
       },
       annualSignalWeights: {
-        marketValuePercentile: 0.5,
-        appearanceVolume: 0.18,
+        marketValuePercentile: 0.38,
+        appearanceVolume: 0.2,
         goalContribution: 0.14,
         assistContribution: 0.08,
-        clubStrength: 0.04,
-        leagueStrength: 0.04,
-        ageCurve: 0.02
+        starterShare: 0.06,
+        clubStrength: 0.05,
+        leagueStrength: 0.05,
+        ageCurve: 0.02,
+        cardsDiscipline: 0.02
       },
+      normalizeAnnualWeightsOverAvailableSignals: true,
+      minimumSignalsForHighConfidenceRating: 3,
+      requiredSignalsForHighConfidenceRating: ["marketValuePercentile", "appearanceVolume"],
       confidenceMultipliers: { HIGH: 1, MEDIUM: 0.65, LOW: 0.35 }
     },
     missingSeasonRules: {

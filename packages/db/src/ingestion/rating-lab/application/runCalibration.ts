@@ -7,6 +7,11 @@ import { prePhase1BCalibrationConfig } from "../domain/rating/ratingFormulaPrese
 import { matchTransfermarktPlayer } from "../sources/transfermarkt/transfermarktMatcher.js";
 import { loadTransfermarktSeasons } from "../sources/transfermarkt/loadTransfermarktSeasons.js";
 import { resolveTransfermarktRating, worldCupCycleYears } from "../sources/transfermarkt/transfermarktMultiSeasonBaseline.js";
+import {
+  findTransfermarktIdentityOverride,
+  loadTransfermarktIdentityOverrides,
+  type TransfermarktIdentityOverride
+} from "../sources/transfermarkt/transfermarktIdentityOverrides.js";
 import type { RatingFormulaConfig } from "../domain/rating/ratingFormulaConfig.js";
 import type { AppliedRatingSource, FjelstulCardContext, RatingLabSourceAvailability } from "../domain/types.js";
 import type { TransfermarktPlayerSeason } from "../sources/transfermarkt/transfermarktTypes.js";
@@ -23,6 +28,7 @@ export type RunCalibrationOptions = {
   formulaConfig?: RatingFormulaConfig;
   sourceAvailability?: readonly RatingLabSourceAvailability[];
   transfermarktSourceDir?: string;
+  includeWomensWorldCups?: boolean;
 };
 
 export async function runCalibration(options: RunCalibrationOptions): Promise<string[]> {
@@ -35,7 +41,8 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
     randomCount: options.randomCount,
     seed: options.seed,
     players: options.players,
-    worldCupYears: options.worldCupYears
+    worldCupYears: options.worldCupYears,
+    includeWomensWorldCups: options.includeWomensWorldCups
   });
   const transfermarktYears = new Set(contexts.flatMap((context) => worldCupCycleYears(context.worldCupYear)));
   console.log(
@@ -46,9 +53,15 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
     targetNames: contexts.map((context) => context.internalRawName)
   });
   console.log(`Loaded ${transfermarktRecords.length} Transfermarkt season rows for rating-lab matching.`);
+  const transfermarktIdentityOverrides = await loadTransfermarktIdentityOverrides();
 
   const cards = contexts.map((context) => {
-    const transfermarktSource = buildTransfermarktAppliedSource(context, transfermarktRecords, formulaConfig);
+    const transfermarktSource = buildTransfermarktAppliedSource(
+      context,
+      transfermarktRecords,
+      formulaConfig,
+      transfermarktIdentityOverrides
+    );
     const resolved = resolveCardRating(context, {
       manualCurated: MANUAL_RATING_FLOORS,
       sevenAZeroComparison,
@@ -83,10 +96,30 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
 function buildTransfermarktAppliedSource(
   context: FjelstulCardContext,
   records: readonly TransfermarktPlayerSeason[],
-  config: RatingFormulaConfig
+  config: RatingFormulaConfig,
+  overrides: readonly TransfermarktIdentityOverride[] = []
 ): AppliedRatingSource | null {
-  const candidates = matchTransfermarktPlayer(context, records).filter((candidate) => candidate.confidence === "HIGH");
-  const candidate = candidates[0];
+  const manualOverride = findTransfermarktIdentityOverride(context, overrides);
+  const overrideRecord = manualOverride
+    ? records.find((record) => record.playerId === manualOverride.transfermarktPlayerId)
+    : undefined;
+  const candidates = matchTransfermarktPlayer(context, records);
+  const candidate = overrideRecord
+    ? {
+        context,
+        record: overrideRecord,
+        score: 100,
+        confidence: "HIGH" as const,
+        reasons: ["manual_identity_override"],
+        transfermarktPlayerId: overrideRecord.playerId,
+        matchNameStatus: "MANUAL_OVERRIDE",
+        matchNationStatus: "MANUAL_OVERRIDE",
+        matchBirthYearStatus: "MANUAL_OVERRIDE",
+        matchPositionStatus: "MANUAL_OVERRIDE",
+        matchFailureReason: "",
+        matchedOn: "manual_identity_override"
+      }
+    : candidates[0];
   if (!candidate) return null;
   const result = resolveTransfermarktRating({ context, candidate, records, config });
   if (!result) return null;
@@ -95,14 +128,26 @@ function buildTransfermarktAppliedSource(
     sourceKey: "TRANSFERMARKT",
     rating: result.rating,
     baseWeight: config.sourceBlendWeights.highConfidenceTransfermarkt,
-    confidence: result.confidence,
+    confidence: result.matchConfidence,
     coverage: result.coverage,
     effectiveWeight: config.sourceBlendWeights.highConfidenceTransfermarkt,
-    affectsRating: result.matchConfidence === "HIGH" && result.coverage >= config.transfermarkt.minimumCoverageToApply,
+    affectsRating:
+      result.matchConfidence === "HIGH" &&
+      result.confidence !== "LOW" &&
+      result.coverage >= config.transfermarkt.minimumCoverageToApply,
     reasons: result.reasons,
     warnings: result.warnings,
     signals: {
       ...result.signals,
+      transfermarktRatingConfidence: result.confidence,
+      transfermarktMatchFailureReason: candidate.matchFailureReason,
+      matchNameStatus: candidate.matchNameStatus,
+      matchNationStatus: candidate.matchNationStatus,
+      matchBirthYearStatus: candidate.matchBirthYearStatus,
+      matchPositionStatus: candidate.matchPositionStatus,
+      matchedOn: candidate.matchedOn,
+      manualTransfermarktOverrideApplied: manualOverride ? "true" : "false",
+      manualTransfermarktOverrideReason: manualOverride?.reason ?? "",
       transfermarktEligibleYears: eligibleYearsFromReasons(result.reasons),
       transfermarktAvailableYears: availableYearsFromReasons(result.reasons),
       tmOldestYear: oldest,

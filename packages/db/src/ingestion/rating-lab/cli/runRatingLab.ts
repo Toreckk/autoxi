@@ -16,6 +16,7 @@ export type CliOptions = Omit<RunCalibrationOptions, "sourceDir" | "formulaConfi
   sevenAZeroDir?: string;
   sourcePathOverrides?: RatingLabSourcePathOverrides;
   preset?: RatingFormulaPresetKey;
+  includeWomensWorldCups?: boolean;
 };
 
 export async function runRatingLab(options: CliOptions): Promise<string[]> {
@@ -96,6 +97,7 @@ function parseCli(argv: readonly string[]): CliOptions {
     seed: values.get("seed") ?? presetOptions.seed,
     players: csv(values.get("players")),
     worldCupYears: csv(values.get("world-cup-years"))?.map((value) => Number(value)).filter(Number.isFinite),
+    includeWomensWorldCups: values.get("include-womens-world-cups") === "true",
     outputDir: resolveCliPath(values.get("output-dir") ?? "data/import-reports/rating-lab")
   };
 }

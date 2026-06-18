@@ -60,7 +60,7 @@ export function resolveTransfermarktRating({
   const years = [oldestYear, twoBackYear, previousYear, worldCupYear] as const;
   const expectedYears = years.filter((year) => isSeasonExpected(context, candidate.record, year, config));
   const playerRecords = records.filter(
-    (record) => record.normalizedName === candidate.record.normalizedName && years.includes(record.seasonYear)
+    (record) => record.playerId === candidate.record.playerId && years.includes(record.seasonYear)
   );
   const scoreByYear = new Map<number, number>();
   const availabilityScores: number[] = [];
@@ -107,28 +107,57 @@ export function resolveTransfermarktRating({
   const rating = clamp(Math.round(weighted + multiSeason.trendAdjustment), 55, 99);
   const latestRecord = playerRecords.find((record) => record.seasonYear === worldCupYear) ?? playerRecords[playerRecords.length - 1]!;
   const latestBaseline = resolveTransfermarktSeasonBaseline(latestRecord, records.filter((record) => record.seasonYear === latestRecord.seasonYear), config);
+  const signalMap = {
+    marketValuePercentile: latestBaseline.marketValuePercentile,
+    appearanceVolume: latestBaseline.appearancePercentile,
+    goalContribution: latestBaseline.productionPercentile,
+    assistContribution: latestBaseline.productionPercentile,
+    starterShare: starterShareScoreFor(latestRecord),
+    leagueStrength: 0.5,
+    clubStrength: 0.5,
+    ageCurve: 0.5,
+    cardsDiscipline: cardsDisciplineScoreFor(latestRecord)
+  };
+  const signalsAvailable = Object.entries(signalMap)
+    .filter(([, value]) => value !== null)
+    .map(([key]) => key);
+  const signalsMissing = Object.entries(signalMap)
+    .filter(([, value]) => value === null)
+    .map(([key]) => key);
+  const hasRequiredSignals = config.transfermarkt.requiredSignalsForHighConfidenceRating.every((signal) =>
+    signalsAvailable.includes(signal)
+  );
+  const hasEnoughSignals = signalsAvailable.length >= config.transfermarkt.minimumSignalsForHighConfidenceRating;
+  const ratingConfidence = confidence === "HIGH" && hasRequiredSignals && hasEnoughSignals ? "HIGH" : confidence === "LOW" ? "LOW" : "MEDIUM";
 
   return {
     rating,
-    confidence,
+    confidence: ratingConfidence,
     coverage: Number(coverage.toFixed(4)),
     matchConfidence: candidate.confidence,
     multiSeason,
     signals: {
+      transfermarktPlayerId: candidate.record.playerId,
       marketValuePercentile: latestBaseline.marketValuePercentile ?? undefined,
       appearanceVolumeScore: latestBaseline.appearancePercentile ?? undefined,
       goalContributionScore: latestBaseline.productionPercentile ?? undefined,
       assistContributionScore: latestBaseline.productionPercentile ?? undefined,
+      starterShareScore: signalMap.starterShare ?? undefined,
       leagueStrengthScore: 0.5,
       clubStrengthScore: 0.5,
-      ageCurveScore: 0.5
+      ageCurveScore: 0.5,
+      cardsDisciplineScore: signalMap.cardsDiscipline ?? undefined,
+      signalsAvailable: signalsAvailable.join("|"),
+      signalsMissing: signalsMissing.join("|")
     },
     reasons: [
       `transfermarkt_cycle:${years.join("|")}`,
       `eligible_years:${expectedYears.join("|")}`,
-      `available_years:${availableExpectedYears.join("|")}`
+      `available_years:${availableExpectedYears.join("|")}`,
+      `rating_confidence:${ratingConfidence}`,
+      hasRequiredSignals ? "required_signals_present" : "insufficient_rating_signals"
     ],
-    warnings
+    warnings: hasRequiredSignals && hasEnoughSignals ? warnings : [...warnings, "insufficient_rating_signals"]
   };
 }
 
@@ -161,4 +190,19 @@ function trendFromScores(oldestToNewest: readonly (number | null)[]): "RISING" |
   if (delta >= 3) return "RISING";
   if (delta <= -3) return "DECLINING";
   return "STABLE";
+}
+
+function starterShareScoreFor(record: TransfermarktPlayerSeason): number | null {
+  const starts = record.starterCount ?? 0;
+  const bench = record.benchCount ?? 0;
+  const total = starts + bench;
+  return total > 0 ? clamp(starts / total, 0, 1) : null;
+}
+
+function cardsDisciplineScoreFor(record: TransfermarktPlayerSeason): number | null {
+  const yellowCards = record.yellowCards ?? 0;
+  const redCards = record.redCards ?? 0;
+  if (yellowCards === 0 && redCards === 0 && record.appearances === null) return null;
+  const appearances = Math.max(record.appearances ?? 1, 1);
+  return 1 - clamp((yellowCards * 0.03 + redCards * 0.18) / appearances, 0, 0.35);
 }
