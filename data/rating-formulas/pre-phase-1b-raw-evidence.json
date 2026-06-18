@@ -40,6 +40,16 @@
       "LOW": 0.35
     }
   },
+  "fbref": {
+    "enabled": true,
+    "affectsOverallRating": false,
+    "affectsStatDecomposition": true,
+    "minimumMinutesForStrongSeason": 900,
+    "normalizeByPosition": true
+  },
+  "manualAnchors": {
+    "enabled": false
+  },
   "missingSeasonRules": {
     "normalizeWeightsOverAvailableEligibleSeasons": true,
     "underAgeSeasonIsNotExpected": true,

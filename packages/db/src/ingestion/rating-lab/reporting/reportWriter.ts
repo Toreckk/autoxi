@@ -43,6 +43,7 @@ const CSV_COLUMNS = [
   "worldCupYear",
   "nation",
   "position",
+  "birthYear",
   "overall",
   "estimatedOverallFromStats",
   "overallStatDelta",
@@ -188,6 +189,7 @@ export function toCardReport({
     worldCupYear: context.worldCupYear,
     nation: context.nation,
     position: context.position,
+    birthYear: context.birthYear ?? null,
     overall: resolved.overall,
     estimatedOverallFromStats: resolved.estimatedOverallFromStats,
     overallStatDelta: resolved.overallStatDelta,
@@ -422,6 +424,7 @@ export async function writeRatingLabReports({
     [`rating-lab-source-availability-${timestamp}.csv`, sourceAvailabilityToCsv(reports.sourceAvailability)],
     [`rating-lab-source-matches-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktMatchConfidence !== "NONE"))],
     [`rating-lab-transfermarkt-match-diagnostics-${timestamp}.csv`, toCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-identity-risk-${timestamp}.csv`, identityRiskToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-unmatched-by-reason-${timestamp}.csv`, unmatchedByReasonToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-signal-coverage-${timestamp}.csv`, signalCoverageToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-coverage-by-era-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByEra ?? [])],
@@ -754,7 +757,7 @@ function rate(count: number, total: number): number {
 }
 
 function sourceAvailabilityToCsv(rows: readonly RatingLabSourceAvailability[]): string {
-  const lines = ["sourceKey,label,status,required,mode,path,affectsRating,warnings"];
+  const lines = ["sourceKey,label,status,required,mode,path,affectsRating,warnings,details"];
   for (const row of rows) {
     lines.push(
       [
@@ -765,7 +768,8 @@ function sourceAvailabilityToCsv(rows: readonly RatingLabSourceAvailability[]): 
         row.mode,
         row.path ?? "",
         String(row.affectsRating),
-        row.warnings.join("|")
+        row.warnings.join("|"),
+        row.details ? Object.entries(row.details).map(([key, value]) => `${key}=${value}`).join("|") : ""
       ]
         .map(csvCell)
         .join(",")
@@ -840,6 +844,51 @@ function signalCoverageToCsv(cards: readonly RatingLabCardReport[]): string {
     );
   }
   return `${lines.join("\n")}\n`;
+}
+
+function identityRiskToCsv(cards: readonly RatingLabCardReport[]): string {
+  const lines = [
+    "riskReason,cardKey,internalRawName,debugRealName,worldCupYear,nation,position,birthYear,overall,tier,transfermarktPlayerId,transfermarktMatchConfidence,transfermarktRatingConfidence,transfermarktMatchFailureReason,manualTransfermarktOverrideApplied,manualTransfermarktOverrideReason"
+  ];
+  for (const card of cards) {
+    const riskReason = transfermarktIdentityRiskReason(card);
+    if (!riskReason) continue;
+    lines.push(
+      [
+        riskReason,
+        card.cardKey,
+        card.internalRawName,
+        card.debugRealName ?? "",
+        card.worldCupYear,
+        card.nation,
+        card.position,
+        card.birthYear ?? "",
+        card.overall,
+        card.tier,
+        card.transfermarktPlayerId,
+        card.transfermarktMatchConfidence,
+        card.transfermarktRatingConfidence,
+        card.transfermarktMatchFailureReason,
+        card.manualTransfermarktOverrideApplied,
+        card.manualTransfermarktOverrideReason
+      ]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function transfermarktIdentityRiskReason(card: RatingLabCardReport): string {
+  if (!card.transfermarktPlayerId) return "";
+  if (card.transfermarktMatchFailureReason) return card.transfermarktMatchFailureReason;
+  if (card.transfermarktMatchConfidence !== "HIGH") return "non_high_identity_confidence";
+  if (isSingleTokenName(card.debugRealName || card.internalRawName) && !card.birthYear) return "single_token_name_without_birth_year";
+  return "";
+}
+
+function isSingleTokenName(name: string): boolean {
+  return name.trim().split(/\s+/u).filter(Boolean).length === 1;
 }
 
 function coverageSummaryToCsv(rows: readonly TransfermarktCoverageSummary[]): string {

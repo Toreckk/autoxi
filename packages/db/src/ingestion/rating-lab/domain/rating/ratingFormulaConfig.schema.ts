@@ -46,6 +46,24 @@ export const RatingFormulaJsonSchema = z
         LOW: weightSchema
       })
     }),
+    fbref: z.object({
+      enabled: z.boolean(),
+      affectsOverallRating: z.literal(false),
+      affectsStatDecomposition: z.boolean(),
+      minimumMinutesForStrongSeason: z.number().int().min(0),
+      normalizeByPosition: z.boolean()
+    }).default({
+      enabled: true,
+      affectsOverallRating: false,
+      affectsStatDecomposition: true,
+      minimumMinutesForStrongSeason: 900,
+      normalizeByPosition: true
+    }),
+    manualAnchors: z.object({
+      enabled: z.boolean()
+    }).default({
+      enabled: true
+    }),
     missingSeasonRules: z.object({
       normalizeWeightsOverAvailableEligibleSeasons: z.boolean(),
       underAgeSeasonIsNotExpected: z.boolean(),

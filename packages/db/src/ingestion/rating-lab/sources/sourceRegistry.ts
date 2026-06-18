@@ -2,6 +2,7 @@ import type { RatingLabSourcePathKey, ResolvedRatingLabSources } from "../config
 import type { RatingLabSourceAvailability } from "../domain/types.js";
 import { createEaHistoricalAdapter } from "./ea/eaHistoricalAdapter.js";
 import { probeLocalSource } from "./localSourceProbe.js";
+import { createFbrefOverlayAdapter } from "./fbref/fbrefOverlayAdapter.js";
 import { createRetroReferenceAdapter } from "./retro/retroReferenceAdapter.js";
 import type { RatingSourceAdapter } from "./sourceAdapterTypes.js";
 import { createTransfermarktAdapter } from "./transfermarkt/transfermarktAdapter.js";
@@ -18,7 +19,8 @@ export function ratingLabSourceRegistry(): RatingLabSourceRegistryEntry[] {
     { pathKey: "transfermarkt", adapter: createTransfermarktAdapter(), readiness: "profile-only" },
     { pathKey: "eaHistorical", adapter: createEaHistoricalAdapter(), readiness: "skeleton" },
     { pathKey: "clubElo", adapter: createSkeletonAdapter("CLUB_ELO"), readiness: "skeleton" },
-    { pathKey: "fbref", adapter: createSkeletonAdapter("FBREF"), readiness: "skeleton" },
+    { pathKey: "fbref", adapter: createFbrefOverlayAdapter(), readiness: "skeleton" },
+    { pathKey: "sofascore", adapter: createSkeletonAdapter("SOFASCORE"), readiness: "skeleton" },
     { pathKey: "statsbomb", adapter: createSkeletonAdapter("STATSBOMB"), readiness: "skeleton" },
     { pathKey: "fiveThirtyEight", adapter: createRetroReferenceAdapter(), readiness: "skeleton" },
     { pathKey: "annualAwards", adapter: createSkeletonAdapter("ANNUAL_AWARDS"), readiness: "skeleton" },
@@ -35,8 +37,15 @@ export async function profileRegisteredSources(resolvedSources: ResolvedRatingLa
     const loaded = await entry.adapter.load({ sourceDir: source.path, mode: "report-only" });
     const current = availability.get(source.sourceKey);
     if (!current) continue;
+    if (loaded.candidateCount === 0 && loaded.warnings.includes("source_unavailable")) {
+      current.status = "unavailable";
+    }
+    if (entry.readiness === "skeleton" && source.sourceKey === "FBREF") {
+      current.status = "skeleton";
+    }
     current.rowCount = loaded.candidateCount;
     current.warnings = [...current.warnings, ...loaded.warnings];
+    current.details = { ...(current.details ?? {}), ...(loaded.details ?? {}) };
   }
   return [...availability.values()];
 }

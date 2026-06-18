@@ -85,6 +85,7 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
       ${metric("95+ cards", distribution?.count95Plus ?? "n/a")}
       ${metric("99 cards", distribution?.count99 ?? "n/a")}
     </section>
+    ${transfermarktCoverageSection(summary)}
     ${sourceAvailabilitySection(summary)}
     ${distributionSection(summary)}
     ${sourceBlendSection(cards)}
@@ -110,6 +111,48 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
   </main>
 </body>
 </html>`;
+}
+
+function transfermarktCoverageSection(summary: RatingLabSummary): string {
+  const cards = summary.cardSnapshots;
+  const withData = cards.filter((card) => card.transfermarktMatchConfidence && card.transfermarktMatchConfidence !== "NONE");
+  const missing = cards.filter((card) => !card.transfermarktMatchConfidence || card.transfermarktMatchConfidence === "NONE");
+  const coverage = cards.length === 0 ? 0 : Math.round((withData.length / cards.length) * 1000) / 10;
+  const byYearRows = Object.entries(groupBy(cards, (card) => String(card.worldCupYear)))
+    .sort(([left], [right]) => Number(left) - Number(right))
+    .map(([year, yearCards]) => coverageRow(year, yearCards))
+    .join("");
+  const byTierRows = Object.entries(groupBy(cards, (card) => card.tier))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([tier, tierCards]) => coverageRow(tier, tierCards))
+    .join("");
+  const stillMissing = missing
+    .filter((card) => card.tier === "ICON" || card.tier === "HERO" || card.overall >= 90)
+    .sort((left, right) => right.overall - left.overall)
+    .slice(0, 30);
+  return `<section>
+    <h2>Transfermarkt Coverage</h2>
+    <section class="grid">
+      ${metric("Current coverage", `${coverage}%`)}
+      ${metric("Cards with Transfermarkt data", `${withData.length} / ${cards.length}`)}
+      ${metric("Missing Transfermarkt data", missing.length)}
+      ${metric("Coverage change this run", "n/a")}
+      ${metric("New approved matches this run", "n/a")}
+      ${metric("Needs review", "see enrichment report")}
+    </section>
+    <h2>Coverage By World Cup Year</h2>
+    <table><thead><tr><th>Year</th><th>Total</th><th>With TM</th><th>Without TM</th><th>Coverage</th></tr></thead><tbody>${byYearRows}</tbody></table>
+    <h2>Coverage By Tier</h2>
+    <table><thead><tr><th>Tier</th><th>Total</th><th>With TM</th><th>Without TM</th><th>Coverage</th></tr></thead><tbody>${byTierRows}</tbody></table>
+    ${cardSection("Top Still-Missing High-Priority Players", stillMissing)}
+  </section>`;
+}
+
+function coverageRow(label: string, cards: readonly RatingLabCardSnapshot[]): string {
+  const withData = cards.filter((card) => card.transfermarktMatchConfidence && card.transfermarktMatchConfidence !== "NONE").length;
+  const withoutData = cards.length - withData;
+  const coverage = cards.length === 0 ? 0 : Math.round((withData / cards.length) * 1000) / 10;
+  return `<tr><td>${escapeHtml(label)}</td><td>${cards.length}</td><td>${withData}</td><td>${withoutData}</td><td>${coverage}%</td></tr>`;
 }
 
 function metric(label: string, value: string | number): string {

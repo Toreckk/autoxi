@@ -34,7 +34,16 @@ export function estimateOverallFromStats({
   );
 }
 
-function outfieldWeights(position: VisiblePosition): Record<keyof Omit<OutfieldCardStatsDto, "profile">, number> {
+type OutfieldWeights = {
+  pace: number;
+  shooting: number;
+  passing: number;
+  dribbling: number;
+  defending: number;
+  physical: number;
+};
+
+function outfieldWeights(position: VisiblePosition): OutfieldWeights {
   switch (position) {
     case "CB":
       return { pace: 0.1, shooting: 0.04, passing: 0.12, dribbling: 0.08, defending: 0.38, physical: 0.28 };
@@ -56,5 +65,7 @@ function outfieldWeights(position: VisiblePosition): Record<keyof Omit<OutfieldC
       return { pace: 0.18, shooting: 0.34, passing: 0.1, dribbling: 0.18, defending: 0.03, physical: 0.17 };
     case "GK":
       return { pace: 0, shooting: 0, passing: 0, dribbling: 0, defending: 0, physical: 0 };
+    default:
+      return { pace: 0.16, shooting: 0.16, passing: 0.18, dribbling: 0.18, defending: 0.16, physical: 0.16 };
   }
 }

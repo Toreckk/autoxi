@@ -49,6 +49,8 @@ export function applyFormulaJsonConfig(
     formulaConfigFallbackUsed: meta.fallbackUsed,
     sourceBlendWeights: formula.sourceBlendWeights,
     transfermarkt: formula.transfermarkt,
+    fbref: formula.fbref,
+    manualAnchors: formula.manualAnchors,
     missingSeasonRules: formula.missingSeasonRules,
     availabilityRules: formula.availabilityRules,
     preview: formula.preview,

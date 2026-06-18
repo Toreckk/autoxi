@@ -40,6 +40,16 @@ export type RatingFormulaConfig = {
     requiredSignalsForHighConfidenceRating: readonly string[];
     confidenceMultipliers: Record<"HIGH" | "MEDIUM" | "LOW", number>;
   };
+  fbref: {
+    enabled: boolean;
+    affectsOverallRating: boolean;
+    affectsStatDecomposition: boolean;
+    minimumMinutesForStrongSeason: number;
+    normalizeByPosition: boolean;
+  };
+  manualAnchors: {
+    enabled: boolean;
+  };
   missingSeasonRules: {
     normalizeWeightsOverAvailableEligibleSeasons: boolean;
     underAgeSeasonIsNotExpected: boolean;

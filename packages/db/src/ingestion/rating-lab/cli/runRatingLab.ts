@@ -6,6 +6,7 @@ import {
   resolveRatingLabSourcePaths,
   type RatingLabSourcePathOverrides
 } from "../config/ratingLabSourcePaths.js";
+import { profileRegisteredSources } from "../sources/sourceRegistry.js";
 import type { RatingFormulaPresetKey } from "../domain/rating/ratingFormulaConfig.js";
 import { isCliEntrypoint } from "./cliEntrypoint.js";
 import { resolveCliPath } from "./cliPaths.js";
@@ -17,10 +18,12 @@ export type CliOptions = Omit<RunCalibrationOptions, "sourceDir" | "formulaConfi
   sourcePathOverrides?: RatingLabSourcePathOverrides;
   preset?: RatingFormulaPresetKey;
   includeWomensWorldCups?: boolean;
+  sourceAvailability?: RunCalibrationOptions["sourceAvailability"];
 };
 
 export async function runRatingLab(options: CliOptions): Promise<string[]> {
   const sourcePaths = resolveRatingLabSourcePaths({ overrides: options.sourcePathOverrides });
+  const profiledAvailability = options.sourceAvailability ?? (options.sourceDir ? sourcePaths.availability : await profileRegisteredSources(sourcePaths));
   const sourceDir = options.sourceDir ? resolveCliPath(options.sourceDir) : assertFjelstulAvailable(sourcePaths);
   const formulaConfig = await loadRatingFormulaConfigFromFile({
     preset: options.preset,
@@ -39,7 +42,7 @@ export async function runRatingLab(options: CliOptions): Promise<string[]> {
     ...options,
     sourceDir,
     formulaConfig,
-    sourceAvailability: sourcePaths.availability,
+    sourceAvailability: profiledAvailability,
     transfermarktSourceDir:
       options.sourceDir && !options.sourcePathOverrides?.transfermarkt
         ? undefined
@@ -121,9 +124,11 @@ function csv(value?: string): string[] | undefined {
 }
 
 if (isCliEntrypoint(import.meta.url)) {
-  const sourcePaths = resolveRatingLabSourcePaths();
-  console.log(formatSourceAvailability(sourcePaths.availability));
-  runRatingLab(parseCli(process.argv.slice(2)))
+  const options = parseCli(process.argv.slice(2));
+  const sourcePaths = resolveRatingLabSourcePaths({ overrides: options.sourcePathOverrides });
+  const profiledAvailability = options.sourceDir ? sourcePaths.availability : await profileRegisteredSources(sourcePaths);
+  console.log(formatSourceAvailability(profiledAvailability));
+  runRatingLab({ ...options, sourceAvailability: profiledAvailability })
     .then((paths) => {
       console.log(`Rating lab wrote ${paths.length} reports:`);
       for (const path of paths) console.log(`- ${path}`);

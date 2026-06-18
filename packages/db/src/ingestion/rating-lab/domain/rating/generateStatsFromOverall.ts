@@ -64,7 +64,8 @@ function outfieldShape(
     RW: { pace: 10, shooting: 4, passing: 0, dribbling: 8, defending: -18, physical: -4 },
     ST: { pace: 4, shooting: 9, passing: -8, dribbling: 3, defending: -25, physical: 4 }
   };
-  return position === "GK" ? 0 : shapes[position][stat];
+  if (position === "GK") return 0;
+  return shapes[position]?.[stat] ?? 0;
 }
 
 function tuneStatsToOverall<T extends OutfieldCardStatsDto | GoalkeeperCardStatsDto>(

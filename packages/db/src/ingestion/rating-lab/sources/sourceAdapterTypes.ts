@@ -23,6 +23,7 @@ export type LoadedRatingSource = {
   sourceKey: string;
   warnings: string[];
   candidateCount: number;
+  details?: Record<string, string | number | boolean>;
 };
 
 export type RatingSourceAdapter = {

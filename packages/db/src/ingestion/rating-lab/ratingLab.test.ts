@@ -37,7 +37,7 @@ import { resolveCardRating } from "./domain/rating/resolveCardRating.js";
 import { blendAppliedRatings } from "./domain/rating/blendAppliedRatings.js";
 import { RatingFormulaJsonSchema } from "./domain/rating/ratingFormulaConfig.schema.js";
 import { loadRatingFormulaConfig, mergeRatingFormulaConfig } from "./domain/rating/ratingFormulaConfig.js";
-import { loadRatingFormulaConfigFromFile } from "./config/loadRatingFormulaConfig.js";
+import { applyFormulaJsonConfig, loadRatingFormulaConfigFromFile } from "./config/loadRatingFormulaConfig.js";
 import { prePhase1BCalibrationConfig } from "./domain/rating/ratingFormulaPresets.js";
 import { runRatingLabWriteDevPreview } from "./cli/runRatingLabWriteDevPreview.js";
 import { resolveRatingLabPresetOptions, runRatingLab } from "./cli/runRatingLab.js";
@@ -52,6 +52,14 @@ import { createRetroReferenceAdapter } from "./sources/retro/retroReferenceAdapt
 import { profileRegisteredSources } from "./sources/sourceRegistry.js";
 import { profileTransfermarktSource } from "./sources/transfermarkt/transfermarktProfiler.js";
 import { matchTransfermarktPlayer } from "./sources/transfermarkt/transfermarktMatcher.js";
+import { loadTransfermarktSeasons } from "./sources/transfermarkt/loadTransfermarktSeasons.js";
+import {
+  discoverLocalTransfermarktPlayerIds,
+  findLocalTransfermarktIdEvidence
+} from "./enrichment/application/transfermarktLocalIdDiscovery.js";
+import { exportEnrichmentRequests } from "./enrichment/application/exportEnrichmentRequests.js";
+import { approvedProviderLinks, loadProviderPlayerLinks } from "./sources/identity/providerPlayerLinks.js";
+import { profileFbrefOverlay } from "./sources/fbref/fbrefOverlayAdapter.js";
 import { resolveFlagCode } from "./sources/nations/flagCodeResolver.js";
 import { createStaticNationAliasIndex, normalizeNationToCode } from "./sources/nations/normalizeNation.js";
 import { resolveTransfermarktSeasonBaseline } from "./sources/transfermarkt/transfermarktSeasonBaseline.js";
@@ -1058,6 +1066,116 @@ describe("rating lab spike", () => {
     expect(profile.files[0]).toMatchObject({ minYear: 1981, maxYear: 1982 });
   });
 
+  it("discovers local Transfermarkt player ids from non-profile files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-tm-discovery-"));
+    await writeFixtureCsv(dir, "game_lineups.csv", [
+      "player_id,player_name,date,type,position,country",
+      "3373,Ronaldinho,2002-06-30,starting_lineup,FW,BRA"
+    ]);
+    await writeFixtureCsv(dir, "game_events.csv", [
+      "player_id,player_name,date,type,club_name",
+      "3373,Ronaldinho,2002-06-30,Goals,Paris Saint-Germain"
+    ]);
+
+    const discovered = await discoverLocalTransfermarktPlayerIds(dir);
+
+    expect(discovered[0]).toMatchObject({
+      playerId: "3373",
+      seenInPlayers: false,
+      seenInLineups: true,
+      seenInEvents: true
+    });
+    expect(findLocalTransfermarktIdEvidence(discovered, "Ronaldinho")?.playerId).toBe("3373");
+  });
+
+  it("loads Transfermarkt overlay profiles and valuations without overwriting base profile data", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rating-lab-tm-overlay-"));
+    const baseDir = join(root, "transfermarkt");
+    const overlayDir = join(root, "transfermarkt-overlay");
+    await mkdir(baseDir, { recursive: true });
+    await mkdir(overlayDir, { recursive: true });
+    await writeFixtureCsv(baseDir, "players.csv", [
+      "player_id,name,country_of_citizenship,position",
+      "3373,Ronaldinho,BRA,Attack"
+    ]);
+    await writeFixtureCsv(overlayDir, "players_overlay.csv", [
+      "player_id,name,country_of_citizenship,date_of_birth,position",
+      "3373,Ronaldo de Assis Moreira,BRA,1980-03-21,Midfield"
+    ]);
+    await writeFixtureCsv(overlayDir, "player_valuations_overlay.csv", [
+      "player_id,date,market_value_in_eur",
+      "3373,2002-06-01,30000000"
+    ]);
+
+    const rows = await loadTransfermarktSeasons(baseDir, { years: new Set([2002]), targetNames: ["Ronaldinho"] });
+
+    expect(rows[0]).toMatchObject({
+      playerId: "3373",
+      playerName: "Ronaldinho",
+      birthYear: 1980,
+      marketValueEur: 30000000
+    });
+  });
+
+  it("parses approved provider links and leaves needs-review links inactive", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-links-"));
+    const path = join(dir, "provider_player_links.csv");
+    await writeFixtureCsv(dir, "provider_player_links.csv", [
+      "subject_provider,subject_id,target_provider,target_id,player_name,nation_code,world_cup_year,confidence,link_method,evidence,review_status",
+      "fjelstul,BRA-2002-ronaldinho,transfermarkt,3373,Ronaldinho,BRA,2002,HIGH,external_known_id,local events,auto_approved",
+      "fjelstul,ITA-1994-baggio,transfermarkt,123,Roberto Baggio,ITA,1994,HIGH,search,candidate,needs_review"
+    ]);
+
+    const links = await loadProviderPlayerLinks(path);
+
+    expect(links).toHaveLength(2);
+    expect(approvedProviderLinks(links).map((link) => link.targetId)).toEqual(["3373"]);
+  });
+
+  it("keeps FBref overlay report-only and non-fatal", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-fbref-empty-"));
+    const profile = await profileFbrefOverlay(dir);
+
+    expect(profile.available).toBe(false);
+    expect(profile.totalRows).toBe(0);
+  });
+
+  it("profiles FBref overlay files as optional source rows", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rating-lab-fbref-"));
+    await writeFixtureCsv(dir, "player_season_standard.csv", [
+      "fbref_player_id,player_name,season,squad,competition,nation,position,age,minutes",
+      "abc123,Ronaldinho,2001-2002,Paris Saint-Germain,Ligue 1,BRA,FW,22,2200"
+    ]);
+
+    const profile = await profileFbrefOverlay(dir);
+
+    expect(profile).toMatchObject({ available: true, totalRows: 1, linkedPlayersCount: 1 });
+  });
+
+  it("exports enrichment candidates and JSONL from a tiny rating report", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-enrichment-export-"));
+    const reportPath = join(outputDir, "rating-lab-rating-breakdown-fixture.csv");
+    await writeFile(
+      reportPath,
+      [
+        "cardKey,internalRawName,debugRealName,worldCupYear,nation,position,overall,tier,primarySource,awards,sevenAZeroDelta,rating99Eligible,transfermarktMatchConfidence,transfermarktPlayerId,transfermarktCoverage,transfermarktSignalsMissing",
+        "fjelstul:p1:2002,Ronaldinho,Ronaldinho,2002,BRA,FW,94,ICON,FJELSTUL_GENERATED,GOLDEN_BALL,7,true,NONE,,,"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
+    const result = await exportEnrichmentRequests({
+      outputDir,
+      outputPath: join(outputDir, "missing-player-enrichment.jsonl"),
+      reportPath,
+      transfermarktSourceDir: outputDir,
+      dryRun: true
+    });
+
+    expect(result.requestCount).toBeGreaterThan(0);
+    expect(await readFile(result.candidatesPath, "utf8")).toContain("TRANSFERMARKT_IMPORTANT_FJELSTUL_ONLY");
+  });
+
   it("loads and validates the default JSON formula config with path metadata", async () => {
     const config = await loadRatingFormulaConfigFromFile();
 
@@ -1065,6 +1183,20 @@ describe("rating lab spike", () => {
     expect(config.ratingDistribution.selectedStrategy).toBe("RAW_EVIDENCE");
     expect(config.formulaConfigPath).toContain("data");
     expect(config.formulaConfigFallbackUsed).toBe(false);
+  });
+
+  it("applies the JSON manual anchor switch to the runtime formula config", () => {
+    const parsed = RatingFormulaJsonSchema.parse(
+      formulaJsonFixture({
+        manualAnchors: { enabled: false }
+      })
+    );
+    const config = applyFormulaJsonConfig(prePhase1BCalibrationConfig, parsed, {
+      path: "fixture-formula.json",
+      fallbackUsed: false
+    });
+
+    expect(config.manualAnchors.enabled).toBe(false);
   });
 
   it("rejects invalid formula weights and ambiguous preview name settings", () => {
@@ -1157,6 +1289,22 @@ describe("rating lab spike", () => {
     ]);
 
     expect(candidates.map((candidate) => candidate.confidence)).toEqual(["HIGH", "MEDIUM", "LOW"]);
+  });
+
+  it("does not auto-promote one-token Transfermarkt names without birth-year support", () => {
+    const ambiguous = matchTransfermarktPlayer(
+      cardContext({ internalRawName: "Ronaldo", nation: "BRA", worldCupYear: 2002 }),
+      [tmSeason("Ronaldo", 2002, 1, 90, { nation: "BRA" })]
+    )[0]!;
+    const supported = matchTransfermarktPlayer(
+      cardContext({ internalRawName: "Ronaldo", nation: "BRA", worldCupYear: 2002, birthYear: 1976 }),
+      [tmSeason("Ronaldo", 2002, 1, 90, { nation: "BRA", birthYear: 1976 })]
+    )[0]!;
+
+    expect(ambiguous.confidence).toBe("MEDIUM");
+    expect(ambiguous.matchFailureReason).toBe("single_token_name_without_birth_year");
+    expect(supported.confidence).toBe("HIGH");
+    expect(supported.matchFailureReason).toBe("");
   });
 
   it("centralizes nation aliases and resolves FIFA flag codes for preview assets", () => {

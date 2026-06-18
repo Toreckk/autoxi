@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { normalizeName } from "../../utils.js";
 import type { TransfermarktPlayerSeason } from "./transfermarktTypes.js";
@@ -86,13 +86,14 @@ export async function loadTransfermarktSeasons(
 
 async function loadPlayers(sourceDir: string): Promise<Map<string, PlayerMeta>> {
   const path = join(sourceDir, "players.csv");
-  if (!(await exists(path))) return new Map();
   const players = new Map<string, PlayerMeta>();
-  for await (const row of streamCsv(path)) {
+  for (const playerPath of [path, join(dirname(sourceDir), "transfermarkt-overlay", "players_overlay.csv")]) {
+    if (!(await exists(playerPath))) continue;
+    for await (const row of streamCsv(playerPath)) {
     const playerId = valueFor(row, ["player_id", "player"]);
     const playerName = valueFor(row, ["name", "player_name"]) ?? [valueFor(row, ["first_name"]), valueFor(row, ["last_name"])].filter(Boolean).join(" ");
     if (!playerId || !playerName) continue;
-    players.set(playerId, {
+      const next = {
       playerId,
       playerName,
       normalizedName: normalizeName(playerName),
@@ -102,7 +103,10 @@ async function loadPlayers(sourceDir: string): Promise<Map<string, PlayerMeta>> 
       subPosition: valueFor(row, ["sub_position"]),
       clubName: valueFor(row, ["current_club_name"]),
       leagueName: valueFor(row, ["current_club_domestic_competition_id"])
-    });
+      };
+      const existing = players.get(playerId);
+      players.set(playerId, existing ? fillMissingPlayerMeta(existing, next) : next);
+    }
   }
   return players;
 }
@@ -122,10 +126,10 @@ async function loadValuations({
   seasons: Map<string, SeasonAccumulator>;
   peerRowsPerYear: number;
 }): Promise<void> {
-  const path = join(sourceDir, "player_valuations.csv");
-  if (!(await exists(path))) return;
   const peerCounts = new Map<number, number>();
-  for await (const row of streamCsv(path)) {
+  for (const path of [join(sourceDir, "player_valuations.csv"), join(dirname(sourceDir), "transfermarkt-overlay", "player_valuations_overlay.csv")]) {
+    if (!(await exists(path))) continue;
+    for await (const row of streamCsv(path)) {
     const playerId = valueFor(row, ["player_id"]);
     const year = yearFromValue(valueFor(row, ["date"]));
     if (!playerId || year === null || (years.size > 0 && !years.has(year))) continue;
@@ -136,6 +140,7 @@ async function loadValuations({
     const value = numberFor(row, ["market_value_in_eur", "market_value_eur", "market_value"]);
     if (value !== null) season.marketValueEur = Math.max(season.marketValueEur ?? 0, value);
     if (value !== null) season.highestMarketValueEur = Math.max(season.highestMarketValueEur ?? 0, value);
+    }
   }
 }
 
@@ -154,10 +159,10 @@ async function loadAppearances({
   seasons: Map<string, SeasonAccumulator>;
   peerRowsPerYear: number;
 }): Promise<void> {
-  const path = join(sourceDir, "appearances.csv");
-  if (!(await exists(path))) return;
   const peerCounts = new Map<number, number>();
-  for await (const row of streamCsv(path)) {
+  for (const path of [join(sourceDir, "appearances.csv"), join(dirname(sourceDir), "transfermarkt-overlay", "appearances_overlay.csv")]) {
+    if (!(await exists(path))) continue;
+    for await (const row of streamCsv(path)) {
     const playerId = valueFor(row, ["player_id"]);
     const year = yearFromValue(valueFor(row, ["date"]));
     if (!playerId || year === null || (years.size > 0 && !years.has(year))) continue;
@@ -170,6 +175,7 @@ async function loadAppearances({
     season.minutes += numberFor(row, ["minutes_played", "minutes", "mins"]) ?? 0;
     season.yellowCards += numberFor(row, ["yellow_cards"]) ?? 0;
     season.redCards += numberFor(row, ["red_cards"]) ?? 0;
+    }
   }
 }
 
@@ -188,10 +194,10 @@ async function loadLineups({
   seasons: Map<string, SeasonAccumulator>;
   peerRowsPerYear: number;
 }): Promise<void> {
-  const path = join(sourceDir, "game_lineups.csv");
-  if (!(await exists(path))) return;
   const peerCounts = new Map<number, number>();
-  for await (const row of streamCsv(path)) {
+  for (const path of [join(sourceDir, "game_lineups.csv"), join(dirname(sourceDir), "transfermarkt-overlay", "game_lineups_overlay.csv")]) {
+    if (!(await exists(path))) continue;
+    for await (const row of streamCsv(path)) {
     const playerId = valueFor(row, ["player_id"]);
     const year = yearFromValue(valueFor(row, ["date"]));
     if (!playerId || year === null || (years.size > 0 && !years.has(year))) continue;
@@ -204,7 +210,22 @@ async function loadLineups({
     if (normalizeName(valueFor(row, ["team_captain"]) ?? "") === "1" || normalizeName(valueFor(row, ["team_captain"]) ?? "") === "true") {
       season.captainCount += 1;
     }
+    }
   }
+}
+
+function fillMissingPlayerMeta(base: PlayerMeta, overlay: PlayerMeta): PlayerMeta {
+  return {
+    playerId: base.playerId,
+    playerName: base.playerName || overlay.playerName,
+    normalizedName: base.normalizedName || overlay.normalizedName,
+    nation: base.nation || overlay.nation,
+    birthYear: base.birthYear ?? overlay.birthYear,
+    position: base.position || overlay.position,
+    subPosition: base.subPosition || overlay.subPosition,
+    clubName: base.clubName || overlay.clubName,
+    leagueName: base.leagueName || overlay.leagueName
+  };
 }
 
 function seasonFor(seasons: Map<string, SeasonAccumulator>, meta: PlayerMeta, seasonYear: number): SeasonAccumulator {

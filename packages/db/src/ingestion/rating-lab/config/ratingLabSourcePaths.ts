@@ -10,6 +10,7 @@ export type RatingLabSourcePathKey =
   | "eaHistorical"
   | "clubElo"
   | "fbref"
+  | "sofascore"
   | "statsbomb"
   | "fiveThirtyEight"
   | "annualAwards"
@@ -80,11 +81,21 @@ const SOURCE_DEFINITIONS: Record<RatingLabSourcePathKey, Omit<ResolvedRatingLabS
     key: "fbref",
     sourceKey: "FBREF",
     label: "FBref",
-    defaultPath: "fbref",
+    defaultPath: "fbref-overlay",
     required: false,
     mode: "optional",
     affectsRating: false,
     envVar: "RATING_LAB_FBREF_SOURCE_DIR"
+  },
+  sofascore: {
+    key: "sofascore",
+    sourceKey: "SOFASCORE",
+    label: "SofaScore",
+    defaultPath: "sofascore",
+    required: false,
+    mode: "skeleton",
+    affectsRating: false,
+    envVar: "RATING_LAB_SOFASCORE_SOURCE_DIR"
   },
   statsbomb: {
     key: "statsbomb",
@@ -152,11 +163,12 @@ export function resolveRatingLabSourcePaths(options: {
       const configured = options.overrides?.[key] ?? env[definition.envVar];
       const path = resolve(cwd, configured ?? resolve(rootDir, definition.defaultPath));
       const available = key === "manual" || key === "sevenAZeroManual" ? true : existsSync(path);
-      const warnings = available || definition.required ? [] : [`${key}_source_unavailable`];
+      const skeleton = definition.mode === "skeleton";
+      const warnings = skeleton ? ["future_investigation"] : available || definition.required ? [] : [`${key}_source_unavailable`];
       entries[key] = {
         ...definition,
         path,
-        available,
+        available: skeleton ? false : available,
         warnings
       };
   }
@@ -167,7 +179,7 @@ export function resolveRatingLabSourcePaths(options: {
     availability: Object.values(entries).map((source) => ({
       sourceKey: source.sourceKey,
       label: source.label,
-      status: source.available ? "available" : "unavailable",
+      status: source.mode === "skeleton" ? "skeleton" : source.available ? "available" : "unavailable",
       required: source.required,
       mode: source.mode,
       path: source.path,

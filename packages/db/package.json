@@ -30,9 +30,15 @@
     "rating-lab:preview": "tsx src/ingestion/rating-lab/cli/runRatingLabPreview.ts",
     "rating-lab:write-dev-preview": "tsx src/ingestion/rating-lab/cli/runRatingLabWriteDevPreview.ts",
     "rating-lab:profile-sources": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileSources.ts",
-    "rating-lab:profile-transfermarkt": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileTransfermarkt.ts"
+    "rating-lab:profile-transfermarkt": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileTransfermarkt.ts",
+    "rating-lab:export-enrichment": "tsx src/ingestion/rating-lab/cli/runRatingLabExportEnrichment.ts",
+    "transfermarkt:coverage": "tsx src/ingestion/rating-lab/cli/runTransfermarktCoverage.ts",
+    "transfermarkt:enrich": "tsx src/ingestion/rating-lab/cli/runTransfermarktEnrich.ts",
+    "transfermarkt:apply-reviewed": "tsx src/ingestion/rating-lab/cli/runTransfermarktApplyReviewed.ts",
+    "transfermarkt:merge-preview": "tsx src/ingestion/rating-lab/cli/runTransfermarktMergePreview.ts"
   },
   "dependencies": {
+    "@autoxi/scrapers": "workspace:*",
     "@autoxi/domain": "workspace:*",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",

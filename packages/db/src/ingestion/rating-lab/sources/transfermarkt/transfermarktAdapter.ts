@@ -10,7 +10,13 @@ export function createTransfermarktAdapter(): RatingSourceAdapter {
       return {
         sourceKey: "TRANSFERMARKT",
         warnings: profile.totalRows === 0 ? ["source_unavailable"] : profile.warnings,
-        candidateCount: profile.totalRows
+        candidateCount: profile.totalRows,
+        details: {
+          baseAvailable: profile.files.some((file) => !file.file.includes("overlay/")),
+          overlayAvailable: profile.files.some((file) => file.file.includes("overlay/")),
+          overlayPlayersCount: profile.files.find((file) => file.file.endsWith("players_overlay.csv"))?.rows ?? 0,
+          overlayValuationsCount: profile.files.find((file) => file.file.endsWith("player_valuations_overlay.csv"))?.rows ?? 0
+        }
       };
     },
     findCandidates() {

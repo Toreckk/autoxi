@@ -54,6 +54,10 @@ pnpm db:rating-lab:gate
 pnpm db:rating-lab:preview
 pnpm db:rating-lab:profile-sources
 pnpm db:rating-lab:profile-transfermarkt
+pnpm db:rating-lab:export-enrichment
+pnpm db:transfermarkt:coverage
+pnpm db:transfermarkt:enrich
+pnpm db:transfermarkt:merge-preview
 ```
 
 Advanced formula override:
@@ -115,6 +119,55 @@ The default active source blend is:
 The Transfermarkt window uses the previous World Cup cycle, for example `1979, 1980, 1981, 1982` for 1982. Under-age seasons are not expected, young players are not penalized for seasons they could not realistically play, and established players with missing expected seasons lose confidence rather than taking an automatic rating crash. Low minutes/appearances affect availability, confidence, and a small season-score penalty. There is no explicit injury inference in this pass.
 
 EA, ClubElo, FBref, StatsBomb, FiveThirtyEight, and annual award adapters are skeletons. They never download data and currently report unavailable or unimplemented status until local files and dependency rules are approved.
+
+## Enrichment Workflow
+
+The enrichment layer is local-only tooling. It does not scrape during API startup and the TypeScript rating/domain layer does not import Python code. Transfermarkt enrichment lives in `@autoxi/scrapers` and writes auditable overlay files rather than mutating the base CSV dump.
+
+Autoxi writes candidate requests:
+
+```txt
+data/work/missing-player-enrichment.jsonl
+```
+
+Export supports batching and dry runs:
+
+```bash
+pnpm db:rating-lab:export-enrichment -- --scope full-men-world-cup --dry-run
+pnpm db:rating-lab:export-enrichment -- --max-requests 250 --min-priority 80
+pnpm db:rating-lab:export-enrichment -- --only-provider transfermarkt
+pnpm db:rating-lab:export-enrichment -- --only-category TRANSFERMARKT_PROFILE_MISSING
+```
+
+Transfermarkt coverage expansion is run separately:
+
+```bash
+pnpm db:transfermarkt:coverage
+pnpm db:transfermarkt:enrich -- --round round-1-core --dry-run
+pnpm db:transfermarkt:enrich -- --round round-1-core
+pnpm db:transfermarkt:enrich -- --round round-1-core --world-cup-year 2002 --max-leagues 1
+pnpm db:transfermarkt:merge-preview
+pnpm db:rating-lab:loop
+```
+
+Non-dry Transfermarkt enrichment reads `TRANSFERMARKT_USER_AGENT` or `USER_AGENT` and uses sequential, rate-limited requests. It caches squad rows under `data/sources/transfermarkt-overlay/cache/` and stops on `403`/`429` without bypass attempts.
+
+Before external search, the exporter builds a local Transfermarkt ID discovery index from `players.csv`, `player_valuations.csv`, `appearances.csv`, `game_lineups.csv`, `game_events.csv`, and `transfers.csv`. That catches players whose `player_id` appears in local events/lineups/transfers even when profile or valuation rows are missing.
+
+The exporter writes:
+
+- `rating-lab-enrichment-candidates-*.csv`
+- `rating-lab-transfermarkt-local-id-discovery-*.csv`
+- `data/work/missing-player-enrichment.jsonl`
+
+Efficiency guardrails:
+
+- dedupe requests by provider/player key where possible
+- group repeated World Cup cards into one provider-player request
+- skip request keys that already succeeded or are marked needs-review/rejected in `data/sources/enrichment/enrichment_status.csv`
+- obey `--max-requests`, `--min-priority`, `--only-provider`, `--only-category`, and `--dry-run`
+
+Transfermarkt overlay rows are loaded from `data/sources/transfermarkt-overlay/`. They fill missing profile fields and add valuation/profile rows without editing or committing the base CSV dump. FBref live extraction is disabled because plain HTTP extraction is currently blocked by 403/Cloudflare responses; the FBref adapter is skeleton/report-only and non-fatal. SofaScore is also skeleton-only for future investigation.
 
 7a0 manual references are comparison-only by default. They are not rating floors. Explicit manual anchors live in `sources/manual/iconicTargets.ts`.
 

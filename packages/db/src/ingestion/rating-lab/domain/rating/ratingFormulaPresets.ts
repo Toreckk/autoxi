@@ -61,6 +61,16 @@ export const prePhase1BCalibrationConfig = {
       LOW: 0.35
     }
   },
+  fbref: {
+    enabled: true,
+    affectsOverallRating: false,
+    affectsStatDecomposition: true,
+    minimumMinutesForStrongSeason: 900,
+    normalizeByPosition: true
+  },
+  manualAnchors: {
+    enabled: true
+  },
   missingSeasonRules: {
     normalizeWeightsOverAvailableEligibleSeasons: true,
     underAgeSeasonIsNotExpected: true,

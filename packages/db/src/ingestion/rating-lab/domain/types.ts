@@ -30,6 +30,7 @@ export type RatingSourceKey =
   | "EA_HISTORICAL"
   | "CLUB_ELO"
   | "FBREF"
+  | "SOFASCORE"
   | "STATSBOMB"
   | "FIVETHIRTYEIGHT_WORLD_CUP"
   | "ANNUAL_AWARDS"
@@ -260,6 +261,7 @@ export type RatingLabCardReport = {
   worldCupYear: number;
   nation: string;
   position: VisiblePosition;
+  birthYear?: number | null;
   overall: number;
   estimatedOverallFromStats: number;
   overallStatDelta: number;
@@ -505,13 +507,14 @@ export type PairwiseRatingCheckResult = {
 export type RatingLabSourceAvailability = {
   sourceKey: RatingSourceKey;
   label: string;
-  status: "available" | "unavailable";
+  status: "available" | "unavailable" | "skeleton";
   required: boolean;
-  mode: "required" | "optional" | "built-in" | "comparison-only";
+  mode: "required" | "optional" | "built-in" | "comparison-only" | "skeleton";
   path: string | null;
   warnings: string[];
   rowCount?: number;
   affectsRating: boolean;
+  details?: Record<string, string | number | boolean>;
 };
 
 export type DistributionBucket = {

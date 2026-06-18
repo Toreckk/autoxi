@@ -1,17 +1,20 @@
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TransfermarktFileProfile, TransfermarktProfile } from "./transfermarktTypes.js";
 
 export async function profileTransfermarktSource(sourceDir: string): Promise<TransfermarktProfile> {
   const files = await csvFiles(sourceDir);
+  const overlayDir = join(dirname(sourceDir), "transfermarkt-overlay");
+  const overlayFiles = (await csvFiles(overlayDir)).map((file) => `overlay/${file}`);
   const profiles: TransfermarktFileProfile[] = [];
   const warnings: string[] = [];
 
-  for (const file of files) {
+  for (const file of [...files, ...overlayFiles]) {
     try {
-      const profile = await profileCsvFile(join(sourceDir, file), file);
+      const filePath = file.startsWith("overlay/") ? join(overlayDir, file.slice("overlay/".length)) : join(sourceDir, file);
+      const profile = await profileCsvFile(filePath, file);
       profiles.push(profile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

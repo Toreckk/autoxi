@@ -43,7 +43,16 @@ export function matchTransfermarktPlayer(
         score += 10;
         reasons.push("season_near_world_cup");
       }
-      const confidence = score >= 90 ? "HIGH" : score >= 65 ? "MEDIUM" : "LOW";
+      const failureReason = matchFailureReason({
+        score,
+        contextName,
+        matchNameStatus,
+        matchNationStatus,
+        matchBirthYearStatus,
+        matchPositionStatus,
+        record
+      });
+      const confidence = confidenceFor({ score, failureReason });
       return {
         context,
         record,
@@ -55,7 +64,7 @@ export function matchTransfermarktPlayer(
         matchNationStatus,
         matchBirthYearStatus,
         matchPositionStatus,
-        matchFailureReason: matchFailureReason({ score, matchNameStatus, matchNationStatus, record }),
+        matchFailureReason: failureReason,
         matchedOn: reasons.join("|")
       } satisfies TransfermarktMatchCandidate;
     })
@@ -86,21 +95,40 @@ function positionStatus(context: FjelstulCardContext, record: TransfermarktPlaye
 
 function matchFailureReason({
   score,
+  contextName,
   matchNameStatus,
   matchNationStatus,
+  matchBirthYearStatus,
+  matchPositionStatus,
   record
 }: {
   score: number;
+  contextName: string;
   matchNameStatus: string;
   matchNationStatus: string;
+  matchBirthYearStatus: string;
+  matchPositionStatus: string;
   record: TransfermarktPlayerSeason;
 }): string {
   if (!record.playerId) return "missing_transfermarkt_player_id";
   if (matchNameStatus === "NO_MATCH") return "name_no_candidate";
   if (matchNationStatus === "MISMATCH") return "nation_mismatch";
+  if (matchBirthYearStatus === "MISMATCH") return "birth_year_mismatch";
+  if (matchPositionStatus === "MISMATCH") return "position_mismatch";
+  if (isSingleTokenName(contextName) && matchBirthYearStatus === "MISSING") return "single_token_name_without_birth_year";
   if (score < 65) return "insufficient_match_score";
   if (score < 90) return "medium_confidence_identity";
   return "";
+}
+
+function confidenceFor({ score, failureReason }: { score: number; failureReason: string }): "HIGH" | "MEDIUM" | "LOW" {
+  if (failureReason === "birth_year_mismatch" || failureReason === "nation_mismatch" || failureReason === "position_mismatch") return "LOW";
+  if (failureReason === "single_token_name_without_birth_year") return "MEDIUM";
+  return score >= 90 ? "HIGH" : score >= 65 ? "MEDIUM" : "LOW";
+}
+
+function isSingleTokenName(name: string): boolean {
+  return name.trim().split(/\s+/u).filter(Boolean).length === 1;
 }
 
 function tokenOverlapScore(left: string, right: string): number {
