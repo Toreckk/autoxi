@@ -45,6 +45,7 @@ export async function runTransfermarktEnrich(argv: readonly string[] = process.a
     `Round: ${result.roundId} (${result.roundDescription})`,
     `Candidates: ${result.missingPlayerCount}`,
     `Years: ${result.yearsScanned.join(", ") || "none"}`,
+    `Transfermarkt seasons: ${result.transfermarktSeasonsScanned.join(", ") || "none"}`,
     `Leagues: ${result.leaguesScanned.join(", ")}`,
     `Cache: ${result.cacheHits} hits, ${result.cacheMisses} misses`,
     `Matches: ${result.playersApproved} approved, ${result.playersNeedsReview} need review`,
@@ -91,6 +92,7 @@ async function writeTransfermarktEnrichmentReports({
       roundDescription: result.roundDescription,
       leaguesScanned: result.leaguesScanned.join("|"),
       yearsScanned: result.yearsScanned.join("|"),
+      transfermarktSeasonsScanned: result.transfermarktSeasonsScanned.join("|"),
       beforeCoveragePercent: result.coverageSummary.transfermarktCoveragePercent,
       afterCoveragePercent: result.coverageSummary.transfermarktCoveragePercent,
       coverageDelta: 0,
@@ -119,6 +121,7 @@ async function writeTransfermarktEnrichmentReports({
       "roundDescription",
       "leaguesScanned",
       "yearsScanned",
+      "transfermarktSeasonsScanned",
       "beforeCoveragePercent",
       "afterCoveragePercent",
       "coverageDelta",
@@ -135,8 +138,18 @@ async function writeTransfermarktEnrichmentReports({
   await writeCsv(outputs[3]!, Object.keys(candidateRows[0] ?? { candidateCategory: "" }), candidateRows);
   await writeCsv(
     outputs[4]!,
-    ["roundId", "leagueId", "season", "cacheStatus"],
-    result.yearsScanned.flatMap((season) => result.leaguesScanned.map((leagueId) => ({ roundId: result.roundId, leagueId, season, cacheStatus: "miss_or_refresh_needed" })))
+    ["roundId", "leagueId", "worldCupYear", "transfermarktSeasonId", "cacheStatus"],
+    result.yearsScanned.flatMap((worldCupYear) =>
+      result.transfermarktSeasonsScanned.map((transfermarktSeasonId) =>
+        result.leaguesScanned.map((leagueId) => ({
+          roundId: result.roundId,
+          leagueId,
+          worldCupYear,
+          transfermarktSeasonId,
+          cacheStatus: "miss_or_refresh_needed"
+        }))
+      ).flat()
+    )
   );
   return outputs;
 }

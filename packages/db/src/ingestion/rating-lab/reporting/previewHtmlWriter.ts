@@ -115,9 +115,11 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
 
 function transfermarktCoverageSection(summary: RatingLabSummary): string {
   const cards = summary.cardSnapshots;
-  const withData = cards.filter((card) => card.transfermarktMatchConfidence && card.transfermarktMatchConfidence !== "NONE");
-  const missing = cards.filter((card) => !card.transfermarktMatchConfidence || card.transfermarktMatchConfidence === "NONE");
-  const coverage = cards.length === 0 ? 0 : Math.round((withData.length / cards.length) * 1000) / 10;
+  const identity = cards.filter((card) => card.transfermarktIdentityCoverage);
+  const context = cards.filter((card) => card.transfermarktContextCoverage);
+  const ratingEvidence = cards.filter((card) => card.transfermarktRatingEvidenceCoverage);
+  const applied = cards.filter((card) => card.transfermarktAppliedRatingCoverage);
+  const missing = cards.filter((card) => !card.transfermarktIdentityCoverage);
   const byYearRows = Object.entries(groupBy(cards, (card) => String(card.worldCupYear)))
     .sort(([left], [right]) => Number(left) - Number(right))
     .map(([year, yearCards]) => coverageRow(year, yearCards))
@@ -133,26 +135,27 @@ function transfermarktCoverageSection(summary: RatingLabSummary): string {
   return `<section>
     <h2>Transfermarkt Coverage</h2>
     <section class="grid">
-      ${metric("Current coverage", `${coverage}%`)}
-      ${metric("Cards with Transfermarkt data", `${withData.length} / ${cards.length}`)}
-      ${metric("Missing Transfermarkt data", missing.length)}
-      ${metric("Coverage change this run", "n/a")}
-      ${metric("New approved matches this run", "n/a")}
-      ${metric("Needs review", "see enrichment report")}
+      ${metric("Identity coverage", `${identity.length} / ${cards.length} (${percent(identity.length, cards.length)}%)`)}
+      ${metric("Context coverage", `${context.length} / ${cards.length} (${percent(context.length, cards.length)}%)`)}
+      ${metric("Rating evidence coverage", `${ratingEvidence.length} / ${cards.length} (${percent(ratingEvidence.length, cards.length)}%)`)}
+      ${metric("Applied rating coverage", `${applied.length} / ${cards.length} (${percent(applied.length, cards.length)}%)`)}
+      ${metric("Missing identity", missing.length)}
+      ${metric("Needs real season stats", cards.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length)}
     </section>
     <h2>Coverage By World Cup Year</h2>
-    <table><thead><tr><th>Year</th><th>Total</th><th>With TM</th><th>Without TM</th><th>Coverage</th></tr></thead><tbody>${byYearRows}</tbody></table>
+    <table><thead><tr><th>Year</th><th>Total</th><th>Identity</th><th>Context</th><th>Rating Evidence</th><th>Applied</th></tr></thead><tbody>${byYearRows}</tbody></table>
     <h2>Coverage By Tier</h2>
-    <table><thead><tr><th>Tier</th><th>Total</th><th>With TM</th><th>Without TM</th><th>Coverage</th></tr></thead><tbody>${byTierRows}</tbody></table>
+    <table><thead><tr><th>Tier</th><th>Total</th><th>Identity</th><th>Context</th><th>Rating Evidence</th><th>Applied</th></tr></thead><tbody>${byTierRows}</tbody></table>
     ${cardSection("Top Still-Missing High-Priority Players", stillMissing)}
   </section>`;
 }
 
 function coverageRow(label: string, cards: readonly RatingLabCardSnapshot[]): string {
-  const withData = cards.filter((card) => card.transfermarktMatchConfidence && card.transfermarktMatchConfidence !== "NONE").length;
-  const withoutData = cards.length - withData;
-  const coverage = cards.length === 0 ? 0 : Math.round((withData / cards.length) * 1000) / 10;
-  return `<tr><td>${escapeHtml(label)}</td><td>${cards.length}</td><td>${withData}</td><td>${withoutData}</td><td>${coverage}%</td></tr>`;
+  const identity = cards.filter((card) => card.transfermarktIdentityCoverage).length;
+  const context = cards.filter((card) => card.transfermarktContextCoverage).length;
+  const ratingEvidence = cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length;
+  const applied = cards.filter((card) => card.transfermarktAppliedRatingCoverage).length;
+  return `<tr><td>${escapeHtml(label)}</td><td>${cards.length}</td><td>${identity} (${percent(identity, cards.length)}%)</td><td>${context} (${percent(context, cards.length)}%)</td><td>${ratingEvidence} (${percent(ratingEvidence, cards.length)}%)</td><td>${applied} (${percent(applied, cards.length)}%)</td></tr>`;
 }
 
 function metric(label: string, value: string | number): string {
@@ -195,6 +198,10 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
         <td>${escapeHtml(card.tier)}</td>
         <td>${escapeHtml(card.primarySource)}</td>
         <td>${escapeHtml(card.confidence)}</td>
+        <td>${escapeHtml(card.transfermarktIdentityConfidence ?? "NONE")}</td>
+        <td>${escapeHtml(card.transfermarktContextCoverage ? "present" : "none")}</td>
+        <td>${escapeHtml(card.transfermarktRatingEvidenceCoverage ? "present" : card.transfermarktRatingEvidenceReason ?? "missing")}</td>
+        <td>${escapeHtml(card.transfermarktAppliedRatingCoverage ? "true" : "false")}</td>
         <td>${escapeHtml(`${card.transfermarktRating ?? "n/a"} / ${card.worldCupPerformanceRating ?? "n/a"}`)}</td>
         <td>${escapeHtml(`${card.transfermarktEffectiveWeight ?? 0} / ${card.worldCupEffectiveWeight ?? 0}`)}</td>
         <td>${escapeHtml(card.transfermarktMatchConfidence ?? "NONE")}</td>
@@ -207,7 +214,11 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
       </tr>`
     )
     .join("");
-  return `<table><thead><tr><th>Name</th><th>Public Name</th><th>Debug Real Name</th><th>Host</th><th>Nation</th><th>Year</th><th>Pos</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>TM / WC Rating</th><th>TM / WC Weight</th><th>TM Match</th><th>TM Coverage</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Name</th><th>Public Name</th><th>Debug Real Name</th><th>Host</th><th>Nation</th><th>Year</th><th>Pos</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>TM Identity</th><th>TM Context</th><th>TM Rating Evidence</th><th>TM Applied</th><th>TM / WC Rating</th><th>TM / WC Weight</th><th>TM Match</th><th>TM Coverage</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function percent(count: number, total: number): number {
+  return total === 0 ? 0 : Math.round((count / total) * 1000) / 10;
 }
 
 function displayName(card: RatingLabCardSnapshot): string {

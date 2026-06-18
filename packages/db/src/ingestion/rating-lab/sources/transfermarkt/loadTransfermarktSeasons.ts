@@ -163,6 +163,8 @@ async function loadAppearances({
   for (const path of [join(sourceDir, "appearances.csv"), join(dirname(sourceDir), "transfermarkt-overlay", "appearances_overlay.csv")]) {
     if (!(await exists(path))) continue;
     for await (const row of streamCsv(path)) {
+    const source = (valueFor(row, ["source"]) ?? "").toLowerCase().replaceAll("_", " ");
+    if (source.startsWith("transfermarkt squad presence")) continue;
     const playerId = valueFor(row, ["player_id"]);
     const year = yearFromValue(valueFor(row, ["date"]));
     if (!playerId || year === null || (years.size > 0 && !years.has(year))) continue;

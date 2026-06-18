@@ -38,35 +38,34 @@ export const NEEDS_REVIEW_HEADERS = [
   "review_status"
 ] as const;
 
-export const APPEARANCES_OVERLAY_HEADERS = [
-  "appearance_id",
-  "game_id",
-  "player_id",
-  "player_club_id",
-  "player_current_club_id",
-  "date",
-  "player_name",
+export const SQUAD_PRESENCE_OVERLAY_HEADERS = [
+  "transfermarkt_player_id",
+  "name",
+  "season_id",
+  "world_cup_year",
   "competition_id",
-  "yellow_cards",
-  "red_cards",
-  "goals",
-  "assists",
-  "minutes_played",
+  "club_id",
+  "club_name",
+  "position",
+  "birth_year",
+  "nationalities",
   "source",
   "enrichment_round",
-  "match_score"
+  "match_score",
+  "review_status"
 ] as const;
 
 export async function writeTransfermarktOverlays(options: {
   playersOverlayPath: string;
-  appearancesOverlayPath?: string;
+  squadPresenceOverlayPath?: string;
   providerLinksPath: string;
   needsReviewPath: string;
   roundId: string;
   matches: readonly TransfermarktCandidateMatch[];
-}): Promise<{ playersWritten: number; linksWritten: number; needsReviewWritten: number }> {
+}): Promise<{ playersWritten: number; linksWritten: number; needsReviewWritten: number; squadPresenceWritten: number }> {
   const approved = options.matches.filter((match) => match.status === "auto_approved");
   const needsReview = options.matches.filter((match) => match.status === "needs_review");
+  const contextMatches = options.matches.filter((match) => match.status === "auto_approved" || match.status === "needs_review");
   const existingPlayers = await readCsv(options.playersOverlayPath);
   const playerRows = new Map(existingPlayers.map((row) => [row.player_id, row]));
   for (const match of approved) {
@@ -86,33 +85,35 @@ export async function writeTransfermarktOverlays(options: {
   }
   await writeCsv(options.playersOverlayPath, TRANSFERMARKT_PLAYER_HEADERS, [...playerRows.values()]);
 
-  if (options.appearancesOverlayPath) {
-    const existingAppearances = await readCsv(options.appearancesOverlayPath);
-    const appearanceRows = new Map<string, CsvRow>(
-      existingAppearances.flatMap((row) => (row.appearance_id ? [[row.appearance_id, row] as const] : []))
+  if (options.squadPresenceOverlayPath) {
+    const existingPresence = await readCsv(options.squadPresenceOverlayPath);
+    const presenceRows = new Map<string, CsvRow>(
+      existingPresence.flatMap((row) =>
+        row.transfermarkt_player_id && row.world_cup_year && row.season_id && row.competition_id
+          ? [[squadPresenceKey(row), row] as const]
+          : []
+      )
     );
-    for (const match of approved) {
-      const appearanceId = `transfermarkt_enrichment_${match.candidate.playerId}_${match.candidate.season}_${options.roundId}`;
-      appearanceRows.set(appearanceId, {
-        appearance_id: appearanceId,
-        game_id: `transfermarkt_enrichment_${match.candidate.leagueId}_${match.candidate.season}`,
-        player_id: match.candidate.playerId,
-        player_club_id: "",
-        player_current_club_id: "",
-        date: `${match.candidate.season}-07-01`,
-        player_name: match.candidate.name,
+    for (const match of contextMatches) {
+      const row = {
+        transfermarkt_player_id: match.candidate.playerId,
+        name: match.candidate.name,
+        season_id: match.candidate.season,
+        world_cup_year: match.request.worldCupYear,
         competition_id: match.candidate.leagueId,
-        yellow_cards: "0",
-        red_cards: "0",
-        goals: "0",
-        assists: "0",
-        minutes_played: "1",
+        club_id: "",
+        club_name: match.candidate.clubName ?? "",
+        position: match.candidate.position ?? "",
+        birth_year: match.candidate.birthYear ?? "",
+        nationalities: match.candidate.nationalities.join("|"),
         source: "transfermarkt_squad_presence",
         enrichment_round: options.roundId,
-        match_score: String(match.score)
-      });
+        match_score: String(match.score),
+        review_status: match.status
+      };
+      presenceRows.set(squadPresenceKey(row), row);
     }
-    await writeCsv(options.appearancesOverlayPath, APPEARANCES_OVERLAY_HEADERS, [...appearanceRows.values()]);
+    await writeCsv(options.squadPresenceOverlayPath, SQUAD_PRESENCE_OVERLAY_HEADERS, [...presenceRows.values()]);
   }
 
   const existingLinks = (await readCsv(options.providerLinksPath)) as ProviderPlayerLinkRow[];
@@ -161,5 +162,20 @@ export async function writeTransfermarktOverlays(options: {
     }))
   );
 
-  return { playersWritten: approved.length, linksWritten: approved.length, needsReviewWritten: needsReview.length };
+  return {
+    playersWritten: approved.length,
+    linksWritten: approved.length,
+    needsReviewWritten: needsReview.length,
+    squadPresenceWritten: contextMatches.length
+  };
+}
+
+function squadPresenceKey(row: Record<string, string | number | boolean | null | undefined>): string {
+  return [
+    row.transfermarkt_player_id ?? "",
+    row.world_cup_year ?? "",
+    row.season_id ?? "",
+    row.competition_id ?? "",
+    row.review_status ?? ""
+  ].join(":");
 }

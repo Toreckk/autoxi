@@ -308,6 +308,12 @@ export type RatingLabCardReport = {
   worldCupPerformanceConfidence: SourceConfidence;
   worldCupRating: number | null;
   transfermarktRating: number | null;
+  transfermarktIdentityConfidence: SourceConfidence;
+  transfermarktIdentityCoverage: boolean;
+  transfermarktContextCoverage: boolean;
+  transfermarktRatingEvidenceCoverage: boolean;
+  transfermarktAppliedRatingCoverage: boolean;
+  transfermarktRatingEvidenceReason: string;
   transfermarktEffectiveWeight: number;
   worldCupEffectiveWeight: number;
   finalBlendedRating: number;
@@ -395,6 +401,12 @@ export type RatingLabCardSnapshot = {
   seasonAbilityBaseline?: number | null;
   worldCupPerformanceRating?: number | null;
   transfermarktRating?: number | null;
+  transfermarktIdentityConfidence?: SourceConfidence;
+  transfermarktIdentityCoverage?: boolean;
+  transfermarktContextCoverage?: boolean;
+  transfermarktRatingEvidenceCoverage?: boolean;
+  transfermarktAppliedRatingCoverage?: boolean;
+  transfermarktRatingEvidenceReason?: string;
   transfermarktEffectiveWeight?: number;
   worldCupEffectiveWeight?: number;
   finalBlendedRating?: number;
@@ -577,6 +589,15 @@ export type RatingLabSummary = {
   }>;
   transfermarktCoverageByEra?: TransfermarktCoverageSummary[];
   transfermarktCoverageByWorldCupYear?: TransfermarktCoverageSummary[];
+  transfermarktCoverageByTier?: TransfermarktCoverageSummary[];
+  tmIdentityCount?: number;
+  tmIdentityPercent?: number;
+  tmContextCount?: number;
+  tmContextPercent?: number;
+  tmRatingEvidenceCount?: number;
+  tmRatingEvidencePercent?: number;
+  tmAppliedRatingCount?: number;
+  tmAppliedRatingPercent?: number;
   sampleMode: string;
   seed: string;
   totalCardsSampled: number;
@@ -640,6 +661,14 @@ export type RatingLabSummary = {
 export type TransfermarktCoverageSummary = {
   key: string;
   totalMaleCards: number;
+  identityMatches: number;
+  contextMatches: number;
+  ratingEvidenceMatches: number;
+  appliedRatingMatches: number;
+  identityRate: number;
+  contextRate: number;
+  ratingEvidenceRate: number;
+  appliedRatingRate: number;
   highTransfermarktMatches: number;
   mediumTransfermarktMatches: number;
   lowTransfermarktMatches: number;

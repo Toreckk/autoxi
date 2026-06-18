@@ -2,6 +2,8 @@ export * from "./TransfermarktCache.js";
 export * from "./TransfermarktCandidateMatcher.js";
 export * from "./TransfermarktCompetitionConfig.js";
 export * from "./TransfermarktCoverageExpansion.js";
+export * from "./TransfermarktIdentityCandidateIndex.js";
 export * from "./TransfermarktOverlayWriter.js";
 export * from "./TransfermarktReviewedApprovals.js";
 export * from "./TransfermarktScraper.js";
+export * from "./WorldCupTransfermarktSeasonResolver.js";

@@ -90,6 +90,12 @@ const CSV_COLUMNS = [
   "worldCupPerformanceSource",
   "worldCupPerformanceConfidence",
   "transfermarktRating",
+  "transfermarktIdentityConfidence",
+  "transfermarktIdentityCoverage",
+  "transfermarktContextCoverage",
+  "transfermarktRatingEvidenceCoverage",
+  "transfermarktAppliedRatingCoverage",
+  "transfermarktRatingEvidenceReason",
   "transfermarktEffectiveWeight",
   "worldCupEffectiveWeight",
   "finalBlendedRating",
@@ -152,11 +158,20 @@ const CSV_COLUMNS = [
 export function toCardReport({
   context,
   resolved,
-  sevenAZero
+  sevenAZero,
+  transfermarktEvidence
 }: {
   context: FjelstulCardContext;
   resolved: ResolvedRating;
   sevenAZero?: SevenAZeroComparison;
+  transfermarktEvidence?: {
+    playerId: string;
+    identityConfidence: RatingLabCardReport["transfermarktIdentityConfidence"];
+    identityCoverage: boolean;
+    contextCoverage: boolean;
+    ratingEvidenceCoverage: boolean;
+    ratingEvidenceReason: string;
+  };
 }): RatingLabCardReport {
   const sevenAZeroDelta = sevenAZero ? resolved.overall - sevenAZero.rating : null;
   const baseEvidence = resolved.evidence.find(
@@ -237,6 +252,12 @@ export function toCardReport({
     worldCupPerformanceSource: breakdown?.worldCupPerformanceSource ?? null,
     worldCupPerformanceConfidence: breakdown?.worldCupPerformanceConfidence ?? "NONE",
     transfermarktRating: breakdown?.transfermarktRating ?? null,
+    transfermarktIdentityConfidence: transfermarktEvidence?.identityConfidence ?? breakdown?.transfermarktMatchConfidence ?? "NONE",
+    transfermarktIdentityCoverage: transfermarktEvidence?.identityCoverage ?? Boolean(breakdown?.transfermarktMatchConfidence && breakdown.transfermarktMatchConfidence !== "NONE"),
+    transfermarktContextCoverage: transfermarktEvidence?.contextCoverage ?? false,
+    transfermarktRatingEvidenceCoverage: transfermarktEvidence?.ratingEvidenceCoverage ?? Boolean(breakdown?.transfermarktRating !== null && breakdown?.transfermarktRating !== undefined),
+    transfermarktAppliedRatingCoverage: (breakdown?.transfermarktEffectiveWeight ?? 0) > 0,
+    transfermarktRatingEvidenceReason: transfermarktEvidence?.ratingEvidenceReason ?? (breakdown?.transfermarktRating ? "real_transfermarkt_rating_evidence_present" : "no_transfermarkt_identity_or_rating_evidence"),
     transfermarktEffectiveWeight: breakdown?.transfermarktEffectiveWeight ?? 0,
     worldCupEffectiveWeight: breakdown?.worldCupEffectiveWeight ?? 0,
     finalBlendedRating: breakdown?.finalBlendedRating ?? resolved.overall,
@@ -266,7 +287,7 @@ export function toCardReport({
     tmAgeCurveScore: numericSignal(tmSignals, "ageCurveScore"),
     tmStarterShareScore: numericSignal(tmSignals, "starterShareScore"),
     tmCardsDisciplineScore: numericSignal(tmSignals, "cardsDisciplineScore"),
-    transfermarktPlayerId: stringSignal(tmSignals, "transfermarktPlayerId"),
+    transfermarktPlayerId: stringSignal(tmSignals, "transfermarktPlayerId") || transfermarktEvidence?.playerId || "",
     transfermarktRatingConfidence: stringSignal(tmSignals, "transfermarktRatingConfidence", "NONE") as RatingLabCardReport["transfermarktRatingConfidence"],
     transfermarktMatchFailureReason: stringSignal(tmSignals, "transfermarktMatchFailureReason"),
     transfermarktSignalsAvailable: stringSignal(tmSignals, "signalsAvailable"),
@@ -422,13 +443,15 @@ export async function writeRatingLabReports({
     [`rating-lab-seven-a-zero-manual-references-${timestamp}.csv`, manualReferencesToCsv(reports.sevenAZeroManualReferences)],
     [`rating-lab-anomalies-${timestamp}.csv`, toCsv(reports.anomalies)],
     [`rating-lab-source-availability-${timestamp}.csv`, sourceAvailabilityToCsv(reports.sourceAvailability)],
-    [`rating-lab-source-matches-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktMatchConfidence !== "NONE"))],
+    [`rating-lab-source-matches-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktMatchConfidence !== "NONE" || card.transfermarktIdentityCoverage))],
     [`rating-lab-transfermarkt-match-diagnostics-${timestamp}.csv`, toCsv(reports.allCards)],
     [`rating-lab-transfermarkt-identity-risk-${timestamp}.csv`, identityRiskToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-unmatched-by-reason-${timestamp}.csv`, unmatchedByReasonToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-signal-coverage-${timestamp}.csv`, signalCoverageToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-coverage-by-era-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByEra ?? [])],
     [`rating-lab-transfermarkt-coverage-by-world-cup-year-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByWorldCupYear ?? [])],
+    [`rating-lab-transfermarkt-coverage-by-tier-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByTier ?? [])],
+    [`rating-lab-transfermarkt-rating-evidence-missing-${timestamp}.csv`, ratingEvidenceMissingToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-baselines-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktRating !== null))],
     [`rating-lab-transfermarkt-multi-season-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.tmWeightedMultiSeasonScore !== null))],
     [`rating-lab-top-100-raw-evidence-${timestamp}.csv`, toCsv([...reports.allCards].sort((left, right) => right.rawEvidenceOverall - left.rawEvidenceOverall).slice(0, 100))],
@@ -522,6 +545,15 @@ function buildSummary({
     tournamentFilterRows: sourceReadiness?.tournamentFilterSummary?.rows,
     transfermarktCoverageByEra: buildTransfermarktCoverageByEra(cards),
     transfermarktCoverageByWorldCupYear: buildTransfermarktCoverageByYear(cards),
+    transfermarktCoverageByTier: buildTransfermarktCoverageByTier(cards),
+    tmIdentityCount: cards.filter((card) => card.transfermarktIdentityCoverage).length,
+    tmIdentityPercent: rate(cards.filter((card) => card.transfermarktIdentityCoverage).length, cards.length),
+    tmContextCount: cards.filter((card) => card.transfermarktContextCoverage).length,
+    tmContextPercent: rate(cards.filter((card) => card.transfermarktContextCoverage).length, cards.length),
+    tmRatingEvidenceCount: cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length,
+    tmRatingEvidencePercent: rate(cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length, cards.length),
+    tmAppliedRatingCount: cards.filter((card) => card.transfermarktAppliedRatingCoverage).length,
+    tmAppliedRatingPercent: rate(cards.filter((card) => card.transfermarktAppliedRatingCoverage).length, cards.length),
     sampleMode,
     seed,
     totalCardsSampled: cards.length,
@@ -680,6 +712,12 @@ function toSnapshot(card: RatingLabCardReport): RatingLabCardSnapshot {
     seasonAbilityBaseline: card.seasonAbilityBaseline,
     worldCupPerformanceRating: card.worldCupPerformanceRating,
     transfermarktRating: card.transfermarktRating,
+    transfermarktIdentityConfidence: card.transfermarktIdentityConfidence,
+    transfermarktIdentityCoverage: card.transfermarktIdentityCoverage,
+    transfermarktContextCoverage: card.transfermarktContextCoverage,
+    transfermarktRatingEvidenceCoverage: card.transfermarktRatingEvidenceCoverage,
+    transfermarktAppliedRatingCoverage: card.transfermarktAppliedRatingCoverage,
+    transfermarktRatingEvidenceReason: card.transfermarktRatingEvidenceReason,
     transfermarktEffectiveWeight: card.transfermarktEffectiveWeight,
     worldCupEffectiveWeight: card.worldCupEffectiveWeight,
     finalBlendedRating: card.finalBlendedRating,
@@ -728,14 +766,32 @@ function buildTransfermarktCoverageByYear(cards: readonly RatingLabCardReport[])
     .map(([key, group]) => transfermarktCoverageSummary(key, group));
 }
 
+function buildTransfermarktCoverageByTier(cards: readonly RatingLabCardReport[]): TransfermarktCoverageSummary[] {
+  return Object.entries(groupBy(cards, (card) => card.tier))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, group]) => transfermarktCoverageSummary(key, group));
+}
+
 function transfermarktCoverageSummary(key: string, cards: readonly RatingLabCardReport[]): TransfermarktCoverageSummary {
   const high = cards.filter((card) => card.transfermarktMatchConfidence === "HIGH").length;
   const medium = cards.filter((card) => card.transfermarktMatchConfidence === "MEDIUM").length;
   const low = cards.filter((card) => card.transfermarktMatchConfidence === "LOW").length;
   const none = cards.length - high - medium - low;
+  const identity = cards.filter((card) => card.transfermarktIdentityCoverage).length;
+  const context = cards.filter((card) => card.transfermarktContextCoverage).length;
+  const ratingEvidence = cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length;
+  const applied = cards.filter((card) => card.transfermarktAppliedRatingCoverage).length;
   return {
     key,
     totalMaleCards: cards.length,
+    identityMatches: identity,
+    contextMatches: context,
+    ratingEvidenceMatches: ratingEvidence,
+    appliedRatingMatches: applied,
+    identityRate: rate(identity, cards.length),
+    contextRate: rate(context, cards.length),
+    ratingEvidenceRate: rate(ratingEvidence, cards.length),
+    appliedRatingRate: rate(applied, cards.length),
     highTransfermarktMatches: high,
     mediumTransfermarktMatches: medium,
     lowTransfermarktMatches: low,
@@ -846,6 +902,30 @@ function signalCoverageToCsv(cards: readonly RatingLabCardReport[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+function ratingEvidenceMissingToCsv(cards: readonly RatingLabCardReport[]): string {
+  const lines = [
+    "playerName,worldCupYear,nation,position,transfermarktPlayerId,identityConfidence,contextEvidence,missingReason,recommendedNextStep"
+  ];
+  for (const card of cards.filter((item) => item.transfermarktIdentityCoverage && !item.transfermarktRatingEvidenceCoverage)) {
+    lines.push(
+      [
+        card.debugRealName || card.internalRawName,
+        card.worldCupYear,
+        card.nation,
+        card.position,
+        card.transfermarktPlayerId,
+        card.transfermarktIdentityConfidence,
+        card.transfermarktContextCoverage ? "squad_presence_or_context_present" : "identity_only",
+        card.transfermarktRatingEvidenceReason,
+        "import_real_transfermarkt_season_stats_or_market_values"
+      ]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function identityRiskToCsv(cards: readonly RatingLabCardReport[]): string {
   const lines = [
     "riskReason,cardKey,internalRawName,debugRealName,worldCupYear,nation,position,birthYear,overall,tier,transfermarktPlayerId,transfermarktMatchConfidence,transfermarktRatingConfidence,transfermarktMatchFailureReason,manualTransfermarktOverrideApplied,manualTransfermarktOverrideReason"
@@ -893,13 +973,21 @@ function isSingleTokenName(name: string): boolean {
 
 function coverageSummaryToCsv(rows: readonly TransfermarktCoverageSummary[]): string {
   const lines = [
-    "key,totalMaleCards,highTransfermarktMatches,mediumTransfermarktMatches,lowTransfermarktMatches,noTransfermarktMatch,highMatchRate,mediumOrBetterRate,manualOverrideCount"
+    "key,totalMaleCards,identityMatches,contextMatches,ratingEvidenceMatches,appliedRatingMatches,identityRate,contextRate,ratingEvidenceRate,appliedRatingRate,highTransfermarktMatches,mediumTransfermarktMatches,lowTransfermarktMatches,noTransfermarktMatch,highMatchRate,mediumOrBetterRate,manualOverrideCount"
   ];
   for (const row of rows) {
     lines.push(
       [
         row.key,
         row.totalMaleCards,
+        row.identityMatches,
+        row.contextMatches,
+        row.ratingEvidenceMatches,
+        row.appliedRatingMatches,
+        row.identityRate,
+        row.contextRate,
+        row.ratingEvidenceRate,
+        row.appliedRatingRate,
         row.highTransfermarktMatches,
         row.mediumTransfermarktMatches,
         row.lowTransfermarktMatches,

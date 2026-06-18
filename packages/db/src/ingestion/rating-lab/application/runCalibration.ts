@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import { findSevenAZeroComparison, loadSevenAZeroLocalJsonComparisonsWithWarnings } from "../sources/seven-a-zero/compareWithSevenAZero.js";
 import { MANUAL_RATING_FLOORS } from "../sources/manual/iconicTargets.js";
 import { loadFjelstulSampleWithReadiness } from "../sources/fjelstul/loadFjelstulSample.js";
@@ -7,6 +8,7 @@ import { prePhase1BCalibrationConfig } from "../domain/rating/ratingFormulaPrese
 import { matchTransfermarktPlayer } from "../sources/transfermarkt/transfermarktMatcher.js";
 import { loadTransfermarktSeasons } from "../sources/transfermarkt/loadTransfermarktSeasons.js";
 import { resolveTransfermarktRating, worldCupCycleYears } from "../sources/transfermarkt/transfermarktMultiSeasonBaseline.js";
+import { findTransfermarktSquadPresence, loadTransfermarktSquadPresence } from "../sources/transfermarkt/transfermarktSquadPresence.js";
 import {
   findTransfermarktIdentityOverride,
   loadTransfermarktIdentityOverrides,
@@ -58,10 +60,13 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
     targetNames: contexts.map((context) => context.internalRawName)
   });
   console.log(`Loaded ${transfermarktRecords.length} Transfermarkt season rows for rating-lab matching.`);
+  const transfermarktSourceRoot = options.transfermarktSourceDir ? dirname(options.transfermarktSourceDir) : "data/sources";
   const transfermarktIdentityOverrides = await loadTransfermarktIdentityOverrides();
-  const providerPlayerLinks = await loadProviderPlayerLinks();
+  const providerPlayerLinks = await loadProviderPlayerLinks(join(transfermarktSourceRoot, "identity", "provider_player_links.csv"));
+  const transfermarktSquadPresence = await loadTransfermarktSquadPresence(options.transfermarktSourceDir);
 
   const cards = contexts.map((context) => {
+    const approvedLink = findApprovedTransfermarktLink(context, providerPlayerLinks);
     const transfermarktSource = buildTransfermarktAppliedSource(
       context,
       transfermarktRecords,
@@ -69,6 +74,11 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
       transfermarktIdentityOverrides,
       providerPlayerLinks
     );
+    const transfermarktEvidence = buildTransfermarktEvidenceSummary({
+      transfermarktSource,
+      approvedLink,
+      squadPresence: findTransfermarktSquadPresence(approvedLink?.targetId, context.worldCupYear, transfermarktSquadPresence)
+    });
     const resolved = resolveCardRating(context, {
       manualCurated: formulaConfig.manualAnchors.enabled ? MANUAL_RATING_FLOORS : [],
       sevenAZeroComparison,
@@ -77,7 +87,8 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
     return toCardReport({
       context,
       resolved,
-      sevenAZero: findSevenAZeroComparison(context, sevenAZeroComparison)
+      sevenAZero: findSevenAZeroComparison(context, sevenAZeroComparison),
+      transfermarktEvidence
     });
   });
 
@@ -98,6 +109,42 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<st
   });
 
   return writeRatingLabReports({ reports, outputDir: options.outputDir });
+}
+
+function buildTransfermarktEvidenceSummary({
+  transfermarktSource,
+  approvedLink,
+  squadPresence
+}: {
+  transfermarktSource: AppliedRatingSource | null;
+  approvedLink?: ProviderPlayerLink;
+  squadPresence?: { reviewStatus: string };
+}): {
+  playerId: string;
+  identityConfidence: "HIGH" | "MEDIUM" | "LOW" | "NONE";
+  identityCoverage: boolean;
+  contextCoverage: boolean;
+  ratingEvidenceCoverage: boolean;
+  ratingEvidenceReason: string;
+} {
+  const identityCoverage = Boolean(approvedLink || transfermarktSource);
+  const contextCoverage = Boolean(squadPresence || approvedLink?.linkMethod.includes("squad_cache"));
+  const ratingEvidenceCoverage = Boolean(transfermarktSource);
+  const identityConfidence = transfermarktSource?.confidence ?? approvedLink?.confidence ?? "NONE";
+  return {
+    playerId: transfermarktSource?.signals?.transfermarktPlayerId ? String(transfermarktSource.signals.transfermarktPlayerId) : approvedLink?.targetId ?? "",
+    identityConfidence,
+    identityCoverage,
+    contextCoverage,
+    ratingEvidenceCoverage,
+    ratingEvidenceReason: ratingEvidenceCoverage
+      ? "real_transfermarkt_rating_evidence_present"
+      : contextCoverage
+        ? "real_transfermarkt_season_stats_not_imported"
+        : identityCoverage
+          ? "identity_only_no_transfermarkt_rating_evidence"
+          : "no_transfermarkt_identity_or_rating_evidence"
+  };
 }
 
 function buildTransfermarktAppliedSource(

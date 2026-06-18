@@ -4,7 +4,9 @@ import { buildCoverageSummary, type CoverageSummary } from "../shared/Enrichment
 import { ScraperCache } from "../shared/ScraperCache.js";
 import { matchTransfermarktCandidates, type TransfermarktMissingPlayer, type TransfermarktSquadPlayer } from "./TransfermarktCandidateMatcher.js";
 import { loadLeagueExpansionPlan, roundById } from "./TransfermarktCompetitionConfig.js";
+import { buildTransfermarktIdentityCandidateIndex, identityCandidateRowsToSquadPlayers } from "./TransfermarktIdentityCandidateIndex.js";
 import { writeTransfermarktOverlays } from "./TransfermarktOverlayWriter.js";
+import { resolveWorldCupTransfermarktSeasonPlan, transfermarktSeasonIdsForWorldCup } from "./WorldCupTransfermarktSeasonResolver.js";
 import type { TransfermarktSquadProvider } from "./TransfermarktScraper.js";
 
 export type TransfermarktEnrichmentOptions = {
@@ -26,6 +28,7 @@ export type TransfermarktEnrichmentResult = {
   roundDescription: string;
   leaguesScanned: string[];
   yearsScanned: number[];
+  transfermarktSeasonsScanned: number[];
   cacheHits: number;
   cacheMisses: number;
   missingPlayerCount: number;
@@ -43,6 +46,7 @@ export async function runTransfermarktCoverageExpansion(options: TransfermarktEn
     (player) => !options.worldCupYear || player.worldCupYear === options.worldCupYear
   );
   const years = [...new Set(missingPlayers.map((player) => player.worldCupYear))].sort((left, right) => left - right);
+  const transfermarktSeasons = [...new Set(years.flatMap((year) => transfermarktSeasonIdsForWorldCup(year)))].sort((left, right) => left - right);
   const cache = new ScraperCache(join(options.outputDir, "transfermarkt-overlay", "cache"));
   const leagues = options.maxLeagues ? round.leagues.slice(0, options.maxLeagues) : round.leagues;
   const squadProvider = options.squadProvider;
@@ -50,11 +54,15 @@ export async function runTransfermarktCoverageExpansion(options: TransfermarktEn
   let cacheMisses = 0;
   const squadRows: TransfermarktSquadPlayer[] = [];
 
-  for (const season of years) {
+  for (const worldCupYear of years) {
+    const seasonPlan = resolveWorldCupTransfermarktSeasonPlan(worldCupYear);
+    const seasons = [seasonPlan.primarySeasonId, ...seasonPlan.secondarySeasonIds];
+    for (const season of seasons) {
     for (const leagueId of leagues) {
-      if ((await cache.hasSquadCache({ leagueId, season })) && !options.forceRefresh) {
+      const cacheKey = { leagueId, season, worldCupYear };
+      if ((await cache.hasSquadCache(cacheKey)) && !options.forceRefresh) {
         cacheHits += 1;
-        squadRows.push(...(await cache.readSquadCache({ leagueId, season })).map((row) => squadPlayerFromCache(row, leagueId, season)));
+        squadRows.push(...(await cache.readSquadCache(cacheKey)).map((row) => squadPlayerFromCache(row, leagueId, season, worldCupYear)));
       } else {
         cacheMisses += 1;
         if (!options.dryRun) {
@@ -62,21 +70,27 @@ export async function runTransfermarktCoverageExpansion(options: TransfermarktEn
             throw new Error("Transfermarkt USER_AGENT is required for live enrichment cache misses.");
           }
           const fetched = await squadProvider.listSquadPlayers(leagueId, season);
-          await cache.writeSquadCache({ leagueId, season }, SQUAD_CACHE_HEADERS, fetched.map(squadPlayerToCacheRow));
-          squadRows.push(...fetched);
+          await cache.writeSquadCache(cacheKey, SQUAD_CACHE_HEADERS, fetched.map(squadPlayerToCacheRow));
+          squadRows.push(...fetched.map((row) => ({ ...row, worldCupYear })));
         }
       }
     }
+    }
   }
 
-  const matches = matchTransfermarktCandidates(missingPlayers, squadRows);
+  const identityIndexRows = await buildTransfermarktIdentityCandidateIndex({
+    sourceDir: options.sourceDir,
+    outputDir: options.outputDir,
+    squadRows
+  });
+  const matches = matchTransfermarktCandidates(missingPlayers, identityCandidateRowsToSquadPlayers(identityIndexRows));
   const approved = matches.filter((match) => match.status === "auto_approved");
   const needsReview = matches.filter((match) => match.status === "needs_review");
 
   if (!options.dryRun) {
     await writeTransfermarktOverlays({
       playersOverlayPath: join(options.outputDir, "transfermarkt-overlay", "players_overlay.csv"),
-      appearancesOverlayPath: join(options.outputDir, "transfermarkt-overlay", "appearances_overlay.csv"),
+      squadPresenceOverlayPath: join(options.outputDir, "transfermarkt-overlay", "squad_presence_overlay.csv"),
       providerLinksPath: join(options.outputDir, "identity", "provider_player_links.csv"),
       needsReviewPath: join(options.outputDir, "enrichment", "enrichment_needs_review.csv"),
       roundId: round.id,
@@ -89,6 +103,7 @@ export async function runTransfermarktCoverageExpansion(options: TransfermarktEn
     roundDescription: round.description,
     leaguesScanned: leagues,
     yearsScanned: years,
+    transfermarktSeasonsScanned: transfermarktSeasons,
     cacheHits,
     cacheMisses,
     missingPlayerCount: missingPlayers.length,
@@ -140,7 +155,7 @@ export async function loadMissingPlayers(path: string): Promise<TransfermarktMis
     }));
 }
 
-function squadPlayerFromCache(row: Record<string, string>, leagueId: string, season: number): TransfermarktSquadPlayer {
+function squadPlayerFromCache(row: Record<string, string>, leagueId: string, season: number, worldCupYear?: number): TransfermarktSquadPlayer {
   return {
     playerId: row.player_id || row.tm_id || row.id || "",
     name: row.name || row.player_name || row.tm_name || "",
@@ -150,6 +165,7 @@ function squadPlayerFromCache(row: Record<string, string>, leagueId: string, sea
     position: row.position,
     clubName: row.current_club_name || row.squad || row.club,
     leagueId: row.league || leagueId,
-    season: row.season ? Number(row.season) : season
+    season: row.season ? Number(row.season) : season,
+    worldCupYear
   };
 }

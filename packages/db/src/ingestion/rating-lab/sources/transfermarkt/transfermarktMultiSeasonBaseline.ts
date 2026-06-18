@@ -1,4 +1,5 @@
 import type { FjelstulCardContext } from "../../domain/types.js";
+import { resolveWorldCupTransfermarktSeasonPlan } from "@autoxi/scrapers";
 import type { RatingFormulaConfig } from "../../domain/rating/ratingFormulaConfig.js";
 import { prePhase1BCalibrationConfig } from "../../domain/rating/ratingFormulaPresets.js";
 import { clamp } from "../../utils.js";
@@ -42,7 +43,8 @@ export function resolveTransfermarktMultiSeasonBaseline(scoresByOffset: {
 }
 
 export function worldCupCycleYears(worldCupYear: number): [number, number, number, number] {
-  return [worldCupYear - 3, worldCupYear - 2, worldCupYear - 1, worldCupYear];
+  const primarySeasonId = resolveWorldCupTransfermarktSeasonPlan(worldCupYear).primarySeasonId;
+  return [primarySeasonId - 3, primarySeasonId - 2, primarySeasonId - 1, primarySeasonId];
 }
 
 export function resolveTransfermarktRating({

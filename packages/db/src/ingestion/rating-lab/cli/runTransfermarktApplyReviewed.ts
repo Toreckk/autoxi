@@ -14,7 +14,7 @@ export async function runTransfermarktApplyReviewed(argv: readonly string[] = pr
     "Transfermarkt reviewed approvals applied.",
     `Manual approvals read: ${result.approvedRowsRead}`,
     `Overlay players written: ${result.playersWritten}`,
-    `Overlay appearances written: ${result.appearancesWritten}`,
+    `Squad/context rows written: ${result.squadPresenceWritten}`,
     `Provider links written: ${result.linksWritten}`
   ].join("\n");
 }

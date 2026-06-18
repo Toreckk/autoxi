@@ -1,5 +1,6 @@
 import { nameScore } from "../shared/MatchScoring.js";
 import { normalizeName } from "../shared/ProviderLinks.js";
+import { resolveWorldCupTransfermarktSeasonPlan, transfermarktSeasonIdsForWorldCup } from "./WorldCupTransfermarktSeasonResolver.js";
 
 export type TransfermarktMissingPlayer = {
   requestKey: string;
@@ -26,6 +27,7 @@ export type TransfermarktSquadPlayer = {
   clubName?: string;
   leagueId: string;
   season: number;
+  worldCupYear?: number;
 };
 
 export type TransfermarktCandidateMatch = {
@@ -44,20 +46,29 @@ export function matchTransfermarktCandidates(
   const matches: TransfermarktCandidateMatch[] = [];
   for (const request of requests) {
     const scored = candidates
-      .filter((candidate) => candidate.season === request.worldCupYear)
+      .filter((candidate) => transfermarktSeasonIdsForWorldCup(request.worldCupYear).includes(candidate.season))
       .map((candidate) => scoreCandidate(request, candidate))
       .filter((match) => match.score >= 50 || match.hardContradictions.length > 0)
       .sort((left, right) => right.score - left.score);
-    const topScore = scored[0]?.score ?? 0;
-    const topCount = scored.filter((match) => match.score === topScore).length;
-    for (const match of scored) {
+    const uniqueScored = uniqueBestIdentityMatches(scored);
+    const topScore = uniqueScored[0]?.score ?? 0;
+    const topIdentityCount = new Set(uniqueScored.filter((match) => match.score === topScore).map((match) => match.candidate.playerId)).size;
+    for (const match of uniqueScored) {
       if (match.hardContradictions.length > 0 || match.score < 70) match.status = "rejected";
-      else if (match.score >= 90 && topCount === 1) match.status = "auto_approved";
+      else if (match.score >= 90 && topIdentityCount === 1 && evidenceFamilyCount(match.reasons) >= 3) match.status = "auto_approved";
       else match.status = "needs_review";
       matches.push(match);
     }
   }
   return matches;
+}
+
+function uniqueBestIdentityMatches(matches: readonly TransfermarktCandidateMatch[]): TransfermarktCandidateMatch[] {
+  const byPlayerId = new Map<string, TransfermarktCandidateMatch>();
+  for (const match of matches) {
+    if (!byPlayerId.has(match.candidate.playerId)) byPlayerId.set(match.candidate.playerId, match);
+  }
+  return [...byPlayerId.values()];
 }
 
 export function scoreCandidate(request: TransfermarktMissingPlayer, candidate: TransfermarktSquadPlayer): TransfermarktCandidateMatch {
@@ -110,17 +121,38 @@ export function scoreCandidate(request: TransfermarktMissingPlayer, candidate: T
     reasons.push("position_plausible");
   }
 
-  if (candidate.season === request.worldCupYear) {
+  const seasonPlan = resolveWorldCupTransfermarktSeasonPlan(request.worldCupYear);
+  if (candidate.season === seasonPlan.primarySeasonId) {
+    score += 10;
+    reasons.push("primary_transfermarkt_season_context");
+  } else if (seasonPlan.secondarySeasonIds.includes(candidate.season)) {
     score += 5;
-    reasons.push("same_world_cup_year_season");
+    reasons.push("secondary_transfermarkt_season_context");
   }
 
-  if (hasExactFullNameMatch && candidateBirthYear && hasPlausiblePosition && candidate.season === request.worldCupYear) {
+  const hasSeasonContext = candidate.season === seasonPlan.primarySeasonId || seasonPlan.secondarySeasonIds.includes(candidate.season);
+  const hasExactSingleTokenNameMatch = name.reason === "name_exact" && isSingleTokenName(request.name);
+  if (hasExactFullNameMatch && candidateBirthYear && hasPlausiblePosition && hasSeasonContext) {
     score += 10;
     reasons.push("supported_full_name_profile_bonus");
   }
+  if (hasExactSingleTokenNameMatch && requestNation && candidateNations.includes(requestNation) && candidateBirthYear && hasPlausiblePosition && hasSeasonContext) {
+    score += 15;
+    reasons.push("supported_one_token_profile_bonus");
+  }
 
   return { request, candidate, score: Math.min(score, 100), status: "needs_review", reasons, hardContradictions };
+}
+
+function evidenceFamilyCount(reasons: readonly string[]): number {
+  return [
+    reasons.some((reason) => reason.includes("name")),
+    reasons.some((reason) => reason.includes("nationality")),
+    reasons.some((reason) => reason.includes("birth_year") || reason.includes("candidate_birth_year")),
+    reasons.some((reason) => reason.includes("position")),
+    reasons.some((reason) => reason.includes("season_context")),
+    reasons.some((reason) => reason.includes("local_id") || reason.includes("provider_link"))
+  ].filter(Boolean).length;
 }
 
 const NATION_ALIASES: Record<string, string> = {

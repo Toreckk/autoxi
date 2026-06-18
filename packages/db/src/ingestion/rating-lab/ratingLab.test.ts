@@ -652,6 +652,8 @@ describe("rating lab spike", () => {
 
     expect(html).toContain("Rating Lab Preview");
     expect(html).toContain("fixture gate");
+    expect(html).toContain("Identity coverage");
+    expect(html).toContain("TM Rating Evidence");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
   });
@@ -1117,6 +1119,26 @@ describe("rating lab spike", () => {
     });
   });
 
+  it("ignores squad-presence placeholder rows as Transfermarkt rating evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rating-lab-tm-context-only-"));
+    const baseDir = join(root, "transfermarkt");
+    const overlayDir = join(root, "transfermarkt-overlay");
+    await mkdir(baseDir, { recursive: true });
+    await mkdir(overlayDir, { recursive: true });
+    await writeFixtureCsv(overlayDir, "players_overlay.csv", [
+      "player_id,name,country_of_citizenship,date_of_birth,position",
+      "10,Miroslav Klose,DEU,1978-06-09,Centre-Forward"
+    ]);
+    await writeFixtureCsv(overlayDir, "appearances_overlay.csv", [
+      "appearance_id,date,player_id,player_name,competition_id,goals,assists,minutes_played,source",
+      "fake-klose,2002-07-01,10,Miroslav Klose,L1,0,0,1,transfermarkt_squad_presence"
+    ]);
+
+    const rows = await loadTransfermarktSeasons(baseDir, { years: new Set([2002]), targetNames: ["Miroslav Klose"] });
+
+    expect(rows).toEqual([]);
+  });
+
   it("parses approved provider links and leaves needs-review links inactive", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rating-lab-links-"));
     const path = join(dir, "provider_player_links.csv");
@@ -1318,6 +1340,12 @@ describe("rating lab spike", () => {
     expect(resolveFlagCode("ARG")).toBe("ar");
   });
 
+  it("uses the pre-tournament Transfermarkt season as the World Cup rating season", () => {
+    expect(worldCupCycleYears(2002)).toEqual([1998, 1999, 2000, 2001]);
+    expect(worldCupCycleYears(1998)).toEqual([1994, 1995, 1996, 1997]);
+    expect(worldCupCycleYears(2022)).toEqual([2019, 2020, 2021, 2022]);
+  });
+
   it("uses Transfermarkt playerId instead of normalized name for multi-season grouping", () => {
     const context = cardContext({
       internalRawName: "Shared Name",
@@ -1397,6 +1425,7 @@ describe("rating lab spike", () => {
       birthYear: 1960
     });
     const records = [
+      tmSeason("Diego Maradona", 1978, 80, 1800),
       tmSeason("Diego Maradona", 1979, 100, 2000),
       tmSeason("Diego Maradona", 1980, 200, 2500),
       tmSeason("Diego Maradona", 1981, 300, 2800),
@@ -1407,7 +1436,7 @@ describe("rating lab spike", () => {
     const candidate = matchTransfermarktPlayer(context, records)[0]!;
     const rating = resolveTransfermarktRating({ context, candidate, records });
 
-    expect(worldCupCycleYears(1982)).toEqual([1979, 1980, 1981, 1982]);
+    expect(worldCupCycleYears(1982)).toEqual([1978, 1979, 1980, 1981]);
     expect(rating?.matchConfidence).toBe("HIGH");
     expect(rating?.coverage).toBe(1);
     expect(rating?.rating).toBeGreaterThanOrEqual(55);
@@ -1616,6 +1645,12 @@ function report(overrides: Partial<RatingLabCardReport> = {}): RatingLabCardRepo
     worldCupPerformanceSource: overrides.worldCupPerformanceSource ?? "FJELSTUL_WORLD_CUP",
     worldCupPerformanceConfidence: overrides.worldCupPerformanceConfidence ?? "MEDIUM",
     transfermarktRating: overrides.transfermarktRating ?? null,
+    transfermarktIdentityConfidence: overrides.transfermarktIdentityConfidence ?? "NONE",
+    transfermarktIdentityCoverage: overrides.transfermarktIdentityCoverage ?? false,
+    transfermarktContextCoverage: overrides.transfermarktContextCoverage ?? false,
+    transfermarktRatingEvidenceCoverage: overrides.transfermarktRatingEvidenceCoverage ?? false,
+    transfermarktAppliedRatingCoverage: overrides.transfermarktAppliedRatingCoverage ?? false,
+    transfermarktRatingEvidenceReason: overrides.transfermarktRatingEvidenceReason ?? "no_transfermarkt_identity_or_rating_evidence",
     transfermarktEffectiveWeight: overrides.transfermarktEffectiveWeight ?? 0,
     worldCupEffectiveWeight: overrides.worldCupEffectiveWeight ?? 1,
     finalBlendedRating: overrides.finalBlendedRating ?? overrides.overall ?? 80,
@@ -1881,6 +1916,14 @@ function summaryFixture(overrides: Partial<RatingLabSummary> = {}): RatingLabSum
     cardsWithHighConfidenceSource: 0,
     cardsWithMediumConfidenceOnly: 1,
     cardsWithLowConfidenceOnly: 0,
+    tmIdentityCount: 0,
+    tmIdentityPercent: 0,
+    tmContextCount: 0,
+    tmContextPercent: 0,
+    tmRatingEvidenceCount: 0,
+    tmRatingEvidencePercent: 0,
+    tmAppliedRatingCount: 0,
+    tmAppliedRatingPercent: 0,
     ...sourceReadinessFixture(),
     byWorldCupYear: { "1986": 1 },
     byDecade: { "1980s": 1 },

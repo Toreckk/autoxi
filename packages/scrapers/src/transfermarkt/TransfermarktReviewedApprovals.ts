@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { readCsv, writeCsv, type CsvRow } from "../shared/CsvWriters.js";
 import { PROVIDER_LINK_HEADERS, providerLinkKey, type ProviderPlayerLinkRow } from "../shared/ProviderLinks.js";
-import { APPEARANCES_OVERLAY_HEADERS, TRANSFERMARKT_PLAYER_HEADERS } from "./TransfermarktOverlayWriter.js";
+import { SQUAD_PRESENCE_OVERLAY_HEADERS, TRANSFERMARKT_PLAYER_HEADERS } from "./TransfermarktOverlayWriter.js";
 
 export type ApplyReviewedTransfermarktApprovalsOptions = {
   outputDir: string;
@@ -12,7 +12,7 @@ export type ApplyReviewedTransfermarktApprovalsOptions = {
 export type ApplyReviewedTransfermarktApprovalsResult = {
   approvedRowsRead: number;
   playersWritten: number;
-  appearancesWritten: number;
+  squadPresenceWritten: number;
   linksWritten: number;
 };
 
@@ -23,14 +23,20 @@ export async function applyReviewedTransfermarktApprovals(
   const approved = (await readCsv(needsReviewPath)).filter((row) => row.review_status === "manual_approved");
   const overlayDir = join(options.outputDir, "transfermarkt-overlay");
   const playersOverlayPath = join(overlayDir, "players_overlay.csv");
-  const appearancesOverlayPath = join(overlayDir, "appearances_overlay.csv");
+  const squadPresenceOverlayPath = join(overlayDir, "squad_presence_overlay.csv");
   const providerLinksPath = join(options.outputDir, "identity", "provider_player_links.csv");
   const roundId = options.roundId ?? "manual-review";
 
   const existingPlayers = await readCsv(playersOverlayPath);
   const players = new Map<string, CsvRow>(existingPlayers.flatMap((row) => (row.player_id ? [[row.player_id, row] as const] : [])));
-  const existingAppearances = await readCsv(appearancesOverlayPath);
-  const appearances = new Map<string, CsvRow>(existingAppearances.flatMap((row) => (row.appearance_id ? [[row.appearance_id, row] as const] : [])));
+  const existingSquadPresence = await readCsv(squadPresenceOverlayPath);
+  const squadPresence = new Map<string, CsvRow>(
+    existingSquadPresence.flatMap((row) =>
+      row.transfermarkt_player_id && row.world_cup_year && row.season_id && row.competition_id
+        ? [[squadPresenceKey(row), row] as const]
+        : []
+    )
+  );
   const existingLinks = (await readCsv(providerLinksPath)) as ProviderPlayerLinkRow[];
   const links = new Map(existingLinks.map((row) => [providerLinkKey(row), row]));
 
@@ -52,25 +58,23 @@ export async function applyReviewedTransfermarktApprovals(
       match_score: row.match_score
     });
 
-    const appearanceId = `transfermarkt_manual_review_${playerId}_${season}_${roundId}`;
-    appearances.set(appearanceId, {
-      appearance_id: appearanceId,
-      game_id: `transfermarkt_manual_review_${row.candidate_competition}_${season}`,
-      player_id: playerId,
-      player_club_id: "",
-      player_current_club_id: "",
-      date: `${season}-07-01`,
-      player_name: row.candidate_name || row.player_name,
+    const presenceRow = {
+      transfermarkt_player_id: playerId,
+      name: row.candidate_name || row.player_name,
+      season_id: season,
+      world_cup_year: row.world_cup_year || season,
       competition_id: row.candidate_competition,
-      yellow_cards: "0",
-      red_cards: "0",
-      goals: "0",
-      assists: "0",
-      minutes_played: "1",
+      club_id: "",
+      club_name: row.candidate_team,
+      position: "",
+      birth_year: row.candidate_birth_year,
+      nationalities: row.candidate_nation || row.nation_code,
       source: "transfermarkt_squad_presence_manual_review",
       enrichment_round: roundId,
-      match_score: row.match_score
-    });
+      match_score: row.match_score,
+      review_status: "manual_approved"
+    };
+    squadPresence.set(squadPresenceKey(presenceRow), presenceRow);
 
     const link: ProviderPlayerLinkRow = {
       subject_provider: "fjelstul",
@@ -89,13 +93,23 @@ export async function applyReviewedTransfermarktApprovals(
   }
 
   await writeCsv(playersOverlayPath, TRANSFERMARKT_PLAYER_HEADERS, [...players.values()]);
-  await writeCsv(appearancesOverlayPath, APPEARANCES_OVERLAY_HEADERS, [...appearances.values()]);
+  await writeCsv(squadPresenceOverlayPath, SQUAD_PRESENCE_OVERLAY_HEADERS, [...squadPresence.values()]);
   await writeCsv(providerLinksPath, PROVIDER_LINK_HEADERS, [...links.values()]);
 
   return {
     approvedRowsRead: approved.length,
     playersWritten: approved.length,
-    appearancesWritten: approved.length,
+    squadPresenceWritten: approved.length,
     linksWritten: approved.length
   };
+}
+
+function squadPresenceKey(row: Record<string, string | number | boolean | null | undefined>): string {
+  return [
+    row.transfermarkt_player_id ?? "",
+    row.world_cup_year ?? "",
+    row.season_id ?? "",
+    row.competition_id ?? "",
+    row.review_status ?? ""
+  ].join(":");
 }
