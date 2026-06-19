@@ -451,7 +451,10 @@ export async function writeRatingLabReports({
     [`rating-lab-transfermarkt-coverage-by-era-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByEra ?? [])],
     [`rating-lab-transfermarkt-coverage-by-world-cup-year-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByWorldCupYear ?? [])],
     [`rating-lab-transfermarkt-coverage-by-tier-${timestamp}.csv`, coverageSummaryToCsv(reports.summary.transfermarktCoverageByTier ?? [])],
+    [`rating-lab-transfermarkt-high-priority-coverage-${timestamp}.csv`, highPriorityTransfermarktCoverageToCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-one-token-status-${timestamp}.csv`, oneTokenTransfermarktStatusToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-rating-evidence-missing-${timestamp}.csv`, ratingEvidenceMissingToCsv(reports.allCards)],
+    [`rating-lab-transfermarkt-squad-presence-${timestamp}.csv`, squadPresenceContextToCsv(reports.allCards)],
     [`rating-lab-transfermarkt-baselines-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.transfermarktRating !== null))],
     [`rating-lab-transfermarkt-multi-season-${timestamp}.csv`, toCsv(reports.allCards.filter((card) => card.tmWeightedMultiSeasonScore !== null))],
     [`rating-lab-top-100-raw-evidence-${timestamp}.csv`, toCsv([...reports.allCards].sort((left, right) => right.rawEvidenceOverall - left.rawEvidenceOverall).slice(0, 100))],
@@ -469,6 +472,9 @@ export async function writeRatingLabReports({
     await writeFile(path, contents, "utf8");
     paths.push(path);
   }
+  const mergeReadinessPath = join(outputDir, `rating-lab-transfermarkt-merge-readiness-${timestamp}.json`);
+  await writeFile(mergeReadinessPath, `${JSON.stringify(buildTransfermarktMergeReadiness(reports.allCards), null, 2)}\n`, "utf8");
+  paths.push(mergeReadinessPath);
   return paths;
 }
 
@@ -957,6 +963,138 @@ function identityRiskToCsv(cards: readonly RatingLabCardReport[]): string {
     );
   }
   return `${lines.join("\n")}\n`;
+}
+
+function highPriorityTransfermarktCoverageToCsv(cards: readonly RatingLabCardReport[]): string {
+  const lines = [
+    "name,publicName,debugRealName,nation,year,tier,position,one_token_name,tm_identity,tm_context,tm_rating_evidence,tm_applied,tm_player_id,identity_score,evidence_families,auto_approval_reason,needs_review_reason,rejected_reason,rating_evidence_missing_reason"
+  ];
+  for (const card of cards.filter(isHighPriorityTransfermarktCard)) {
+    lines.push(transfermarktStatusCsvRow(card));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function oneTokenTransfermarktStatusToCsv(cards: readonly RatingLabCardReport[]): string {
+  const lines = [
+    "name,publicName,debugRealName,nation,year,tier,position,one_token_name,tm_identity,tm_context,tm_rating_evidence,tm_applied,tm_player_id,identity_score,evidence_families,auto_approval_reason,needs_review_reason,rejected_reason,rating_evidence_missing_reason"
+  ];
+  for (const card of cards.filter((item) => isSingleTokenName(item.debugRealName || item.internalRawName))) {
+    lines.push(transfermarktStatusCsvRow(card));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function squadPresenceContextToCsv(cards: readonly RatingLabCardReport[]): string {
+  const lines = ["playerName,worldCupYear,nation,transfermarktPlayerId,contextPresent,ratingEvidencePresent,appliedRatingPresent,ratingEvidenceMissingReason"];
+  for (const card of cards.filter((item) => item.transfermarktContextCoverage || item.transfermarktRatingEvidenceReason === "real_transfermarkt_season_stats_not_imported")) {
+    lines.push(
+      [
+        card.debugRealName || card.internalRawName,
+        card.worldCupYear,
+        card.nation,
+        card.transfermarktPlayerId,
+        card.transfermarktContextCoverage,
+        card.transfermarktRatingEvidenceCoverage,
+        card.transfermarktAppliedRatingCoverage,
+        card.transfermarktRatingEvidenceReason
+      ].map(csvCell).join(",")
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function transfermarktStatusCsvRow(card: RatingLabCardReport): string {
+  const signals = card.transfermarktSignalsAvailable.split("|").filter(Boolean);
+  return [
+    card.internalRawName,
+    card.publicDisplayName,
+    card.debugRealName ?? "",
+    card.nation,
+    card.worldCupYear,
+    card.tier,
+    card.position,
+    isSingleTokenName(card.debugRealName || card.internalRawName),
+    card.transfermarktIdentityConfidence,
+    card.transfermarktContextCoverage ? "PRESENT" : "MISSING",
+    card.transfermarktRatingEvidenceCoverage,
+    card.transfermarktAppliedRatingCoverage,
+    card.transfermarktPlayerId,
+    "",
+    signals.join("|"),
+    card.transfermarktAppliedRatingCoverage ? "real_rating_evidence_applied" : "",
+    card.transfermarktIdentityCoverage && !card.transfermarktAppliedRatingCoverage ? card.transfermarktRatingEvidenceReason : "",
+    card.transfermarktMatchFailureReason,
+    card.transfermarktRatingEvidenceReason
+  ].map(csvCell).join(",");
+}
+
+function buildTransfermarktMergeReadiness(cards: readonly RatingLabCardReport[]): Record<string, unknown> {
+  const modernCards = cards.filter((card) => card.worldCupYear >= 1994);
+  const highPriorityModern = modernCards.filter(isHighPriorityTransfermarktCard);
+  const oneTokenHighPriorityModern = highPriorityModern.filter((card) => isSingleTokenName(card.debugRealName || card.internalRawName));
+  const cards2002 = cards.filter((card) => card.worldCupYear === 2002);
+  const fakeRatingEvidenceCount = cards.filter(
+    (card) =>
+      card.transfermarktRatingEvidenceCoverage &&
+      /transfermarkt_squad_presence/iu.test(`${card.evidenceSummary}|${card.transfermarktSignalsAvailable}|${card.transfermarktRatingEvidenceReason}`)
+  ).length;
+  const modernIdentityCoveragePercent = percentNumber(modernCards.filter((card) => card.transfermarktIdentityCoverage).length, modernCards.length);
+  const highPriorityModernIdentityCoveragePercent = percentNumber(highPriorityModern.filter((card) => card.transfermarktIdentityCoverage).length, highPriorityModern.length);
+  const oneTokenHighPriorityModernIdentityCoveragePercent = percentNumber(
+    oneTokenHighPriorityModern.filter((card) => card.transfermarktIdentityCoverage).length,
+    oneTokenHighPriorityModern.length
+  );
+  const worldCup2002IdentityCoveragePercent = percentNumber(cards2002.filter((card) => card.transfermarktIdentityCoverage).length, cards2002.length);
+  const blockingReasons = fakeRatingEvidenceCount > 0 ? ["fakeRatingEvidenceCount must be 0"] : [];
+  const warnings = [
+    highPriorityModern.length > 0 && highPriorityModernIdentityCoveragePercent < 90
+      ? "high_priority_modern_identity_coverage_below_90_percent"
+      : "",
+    oneTokenHighPriorityModern.length > 0 && oneTokenHighPriorityModernIdentityCoveragePercent < 80
+      ? "one_token_high_priority_modern_identity_coverage_below_80_percent"
+      : "",
+    cards2002.length > 0 && cards2002.filter((card) => card.transfermarktIdentityCoverage).length <= 1
+      ? "world_cup_2002_identity_coverage_not_materially_higher_than_1_card"
+      : ""
+  ].filter(Boolean);
+  return {
+    mergeReady: blockingReasons.length === 0 && warnings.length === 0,
+    blockingReasons,
+    warnings,
+    modernIdentityCoveragePercent,
+    highPriorityModernIdentityCoveragePercent,
+    oneTokenHighPriorityModernIdentityCoveragePercent,
+    worldCup2002IdentityCoveragePercent,
+    tmIdentityCount: cards.filter((card) => card.transfermarktIdentityCoverage).length,
+    tmContextCount: cards.filter((card) => card.transfermarktContextCoverage).length,
+    tmRatingEvidenceCount: cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length,
+    tmAppliedRatingCount: cards.filter((card) => card.transfermarktAppliedRatingCoverage).length,
+    identityOnlyCount: cards.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length,
+    ratingEvidenceCount: cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length,
+    appliedCount: cards.filter((card) => card.transfermarktAppliedRatingCoverage).length,
+    needsReviewHighPriorityCount: highPriorityModern.filter(
+      (card) => card.transfermarktIdentityCoverage && !card.transfermarktAppliedRatingCoverage && card.transfermarktRatingEvidenceReason !== "real_transfermarkt_season_stats_not_imported"
+    ).length,
+    stillMissingHighPriorityCount: highPriorityModern.filter((card) => !card.transfermarktIdentityCoverage).length,
+    fakeRatingEvidenceCount
+  };
+}
+
+function isHighPriorityTransfermarktCard(card: RatingLabCardReport): boolean {
+  return (
+    card.tier === "ICON" ||
+    card.tier === "HERO" ||
+    card.tier === "WORLD_CLASS" ||
+    card.overall >= 87 ||
+    Boolean(card.awards) ||
+    card.manualFloorApplied === "true" ||
+    Math.abs(card.sevenAZeroDelta ?? 0) >= 8
+  );
+}
+
+function percentNumber(count: number, total: number): number {
+  return total === 0 ? 0 : Number(((count / total) * 100).toFixed(1));
 }
 
 function transfermarktIdentityRiskReason(card: RatingLabCardReport): string {

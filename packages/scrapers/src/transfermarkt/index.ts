@@ -1,6 +1,7 @@
 export * from "./TransfermarktCache.js";
 export * from "./TransfermarktCandidateMatcher.js";
 export * from "./TransfermarktCompetitionConfig.js";
+export * from "./TransfermarktCompetitionSeasonModel.js";
 export * from "./TransfermarktCoverageExpansion.js";
 export * from "./TransfermarktIdentityCandidateIndex.js";
 export * from "./TransfermarktOverlayWriter.js";

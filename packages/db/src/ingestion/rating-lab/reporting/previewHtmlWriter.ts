@@ -120,6 +120,10 @@ function transfermarktCoverageSection(summary: RatingLabSummary): string {
   const ratingEvidence = cards.filter((card) => card.transfermarktRatingEvidenceCoverage);
   const applied = cards.filter((card) => card.transfermarktAppliedRatingCoverage);
   const missing = cards.filter((card) => !card.transfermarktIdentityCoverage);
+  const highPriority = cards.filter(isHighPriorityTransfermarktCard);
+  const oneToken = cards.filter((card) => isSingleTokenName(card.debugRealName ?? card.internalRawName));
+  const oneTokenHighPriority = highPriority.filter((card) => isSingleTokenName(card.debugRealName ?? card.internalRawName));
+  const mergeWarnings = mergeReadinessWarnings(cards);
   const byYearRows = Object.entries(groupBy(cards, (card) => String(card.worldCupYear)))
     .sort(([left], [right]) => Number(left) - Number(right))
     .map(([year, yearCards]) => coverageRow(year, yearCards))
@@ -142,6 +146,24 @@ function transfermarktCoverageSection(summary: RatingLabSummary): string {
       ${metric("Missing identity", missing.length)}
       ${metric("Needs real season stats", cards.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length)}
     </section>
+    <h2>High-Priority Transfermarkt Identity Status</h2>
+    <section class="grid">
+      ${metric("High-priority identity", `${highPriority.filter((card) => card.transfermarktIdentityCoverage).length} / ${highPriority.length} (${percent(highPriority.filter((card) => card.transfermarktIdentityCoverage).length, highPriority.length)}%)`)}
+      ${metric("High-priority missing", highPriority.filter((card) => !card.transfermarktIdentityCoverage).length)}
+      ${metric("Identity-only high-priority", highPriority.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length)}
+    </section>
+    <h2>One-Token Name Auto-Detection Status</h2>
+    <section class="grid">
+      ${metric("One-token identity", `${oneToken.filter((card) => card.transfermarktIdentityCoverage).length} / ${oneToken.length} (${percent(oneToken.filter((card) => card.transfermarktIdentityCoverage).length, oneToken.length)}%)`)}
+      ${metric("High-priority one-token identity", `${oneTokenHighPriority.filter((card) => card.transfermarktIdentityCoverage).length} / ${oneTokenHighPriority.length} (${percent(oneTokenHighPriority.filter((card) => card.transfermarktIdentityCoverage).length, oneTokenHighPriority.length)}%)`)}
+    </section>
+    <h2>Merge Readiness</h2>
+    <section class="grid">
+      ${metric("Status", mergeWarnings.length === 0 ? "ready" : "not ready")}
+      ${metric("Warnings", mergeWarnings.length)}
+      ${metric("Fake rating evidence", fakeRatingEvidenceCount(cards))}
+    </section>
+    ${listSection("Merge Readiness Reasons", mergeWarnings)}
     <h2>Coverage By World Cup Year</h2>
     <table><thead><tr><th>Year</th><th>Total</th><th>Identity</th><th>Context</th><th>Rating Evidence</th><th>Applied</th></tr></thead><tbody>${byYearRows}</tbody></table>
     <h2>Coverage By Tier</h2>
@@ -194,6 +216,7 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
         <td>${escapeHtml(card.nation)}</td>
         <td>${card.worldCupYear}</td>
         <td>${escapeHtml(card.position)}</td>
+        <td>${escapeHtml(isSingleTokenName(card.debugRealName ?? card.internalRawName) ? "true" : "false")}</td>
         <td><strong>${card.overall}</strong></td>
         <td>${escapeHtml(card.tier)}</td>
         <td>${escapeHtml(card.primarySource)}</td>
@@ -202,10 +225,13 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
         <td>${escapeHtml(card.transfermarktContextCoverage ? "present" : "none")}</td>
         <td>${escapeHtml(card.transfermarktRatingEvidenceCoverage ? "present" : card.transfermarktRatingEvidenceReason ?? "missing")}</td>
         <td>${escapeHtml(card.transfermarktAppliedRatingCoverage ? "true" : "false")}</td>
-        <td>${escapeHtml(`${card.transfermarktRating ?? "n/a"} / ${card.worldCupPerformanceRating ?? "n/a"}`)}</td>
-        <td>${escapeHtml(`${card.transfermarktEffectiveWeight ?? 0} / ${card.worldCupEffectiveWeight ?? 0}`)}</td>
+        <td>${escapeHtml(card.transfermarktRatingEvidenceCoverage ? `${card.transfermarktRating ?? "n/a"} / ${card.worldCupPerformanceRating ?? "n/a"}` : "n/a")}</td>
+        <td>${escapeHtml(card.transfermarktRatingEvidenceCoverage ? `${card.transfermarktEffectiveWeight ?? 0} / ${card.worldCupEffectiveWeight ?? 0}` : "n/a")}</td>
+        <td>${escapeHtml(card.transfermarktPlayerId ?? "")}</td>
         <td>${escapeHtml(card.transfermarktMatchConfidence ?? "NONE")}</td>
         <td>${escapeHtml(String(card.transfermarktCoverage ?? ""))}</td>
+        <td>${escapeHtml(card.transfermarktSignalsAvailable ?? "")}</td>
+        <td>${escapeHtml(card.transfermarktMatchFailureReason ?? "")}</td>
         <td>${escapeHtml(String(card.rawEvidenceOverall ?? ""))}</td>
         <td>${escapeHtml(card.evidenceSummary ?? "")}</td>
         <td>${escapeHtml(card.comparisonSummary ?? "")}</td>
@@ -214,7 +240,7 @@ function cardTable(cards: readonly RatingLabCardSnapshot[]): string {
       </tr>`
     )
     .join("");
-  return `<table><thead><tr><th>Name</th><th>Public Name</th><th>Debug Real Name</th><th>Host</th><th>Nation</th><th>Year</th><th>Pos</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>TM Identity</th><th>TM Context</th><th>TM Rating Evidence</th><th>TM Applied</th><th>TM / WC Rating</th><th>TM / WC Weight</th><th>TM Match</th><th>TM Coverage</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Name</th><th>Public Name</th><th>Debug Real Name</th><th>Host</th><th>Nation</th><th>Year</th><th>Pos</th><th>One Token</th><th>Overall</th><th>Tier</th><th>Source</th><th>Confidence</th><th>TM Identity</th><th>TM Context</th><th>TM Rating Evidence</th><th>TM Applied</th><th>TM / WC Rating</th><th>TM / WC Weight</th><th>TM Player ID</th><th>TM Match</th><th>TM Coverage</th><th>TM Evidence Families</th><th>TM Rejected Reason</th><th>Raw</th><th>Evidence</th><th>Comparisons</th><th>Warnings</th><th>Reasons</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function percent(count: number, total: number): number {
@@ -223,6 +249,10 @@ function percent(count: number, total: number): number {
 
 function displayName(card: RatingLabCardSnapshot): string {
   return card.isLocalDebugOnly && card.debugRealName ? card.debugRealName : card.publicDisplayName ?? card.publicPlaceholderName;
+}
+
+function isSingleTokenName(name: string): boolean {
+  return name.trim().split(/\s+/u).filter(Boolean).length === 1;
 }
 
 function sourceBlendSection(cards: readonly RatingLabCardSnapshot[]): string {
@@ -260,6 +290,42 @@ function sourceAvailabilitySection(summary: RatingLabSummary): string {
     )
     .join("");
   return `<section><h2>Source Availability</h2><table><thead><tr><th>Source</th><th>Status</th><th>Mode</th><th>Affects Rating</th><th>Path</th><th>Warnings</th></tr></thead><tbody>${body}</tbody></table></section>`;
+}
+
+function isHighPriorityTransfermarktCard(card: RatingLabCardSnapshot): boolean {
+  return (
+    card.tier === "ICON" ||
+    card.tier === "HERO" ||
+    card.tier === "WORLD_CLASS" ||
+    card.overall >= 87 ||
+    Boolean(card.awards)
+  );
+}
+
+function mergeReadinessWarnings(cards: readonly RatingLabCardSnapshot[]): string[] {
+  const highPriorityModern = cards.filter((card) => card.worldCupYear >= 1994 && isHighPriorityTransfermarktCard(card));
+  const oneTokenHighPriorityModern = highPriorityModern.filter((card) => isSingleTokenName(card.debugRealName ?? card.internalRawName));
+  const cards2002 = cards.filter((card) => card.worldCupYear === 2002);
+  return [
+    fakeRatingEvidenceCount(cards) > 0 ? "fakeRatingEvidenceCount must be 0" : "",
+    highPriorityModern.length > 0 && percent(highPriorityModern.filter((card) => card.transfermarktIdentityCoverage).length, highPriorityModern.length) < 90
+      ? "high-priority modern identity coverage below 90%"
+      : "",
+    oneTokenHighPriorityModern.length > 0 && percent(oneTokenHighPriorityModern.filter((card) => card.transfermarktIdentityCoverage).length, oneTokenHighPriorityModern.length) < 80
+      ? "one-token high-priority modern identity coverage below 80%"
+      : "",
+    cards2002.length > 0 && cards2002.filter((card) => card.transfermarktIdentityCoverage).length <= 1
+      ? "2002 identity coverage is not materially higher than 1 card"
+      : ""
+  ].filter(Boolean);
+}
+
+function fakeRatingEvidenceCount(cards: readonly RatingLabCardSnapshot[]): number {
+  return cards.filter(
+    (card) =>
+      card.transfermarktRatingEvidenceCoverage &&
+      /transfermarkt_squad_presence/iu.test(`${card.evidenceSummary ?? ""}|${card.transfermarktSignalsAvailable ?? ""}|${card.transfermarktRatingEvidenceReason ?? ""}`)
+  ).length;
 }
 
 function distributionSection(summary: RatingLabSummary): string {

@@ -105,12 +105,39 @@ async function writeTransfermarktEnrichmentReports({
       dryRun: result.dryRun
     }
   ];
+  const identityIndexRows = await readCsv(resolve(process.env.INIT_CWD ?? process.cwd(), "data/sources/transfermarkt-overlay/identity_candidate_index.csv"));
+  const identityMatchHeaders = [
+    "requestKey",
+    "ratingSubjectId",
+    "playerName",
+    "nation",
+    "worldCupYear",
+    "position",
+    "transfermarktPlayerId",
+    "candidateName",
+    "competitionId",
+    "transfermarktSeasonId",
+    "score",
+    "status",
+    "evidenceFamiliesPresent",
+    "evidenceFamiliesMissing",
+    "autoApprovalReason",
+    "needsReviewReason",
+    "rejectedReason",
+    "matchReasons",
+    "hardContradictions"
+  ] as const;
   const outputs = [
     join(reportDir, `rating-lab-transfermarkt-coverage-by-year-${timestamp}.csv`),
     join(reportDir, `rating-lab-transfermarkt-coverage-by-tier-${timestamp}.csv`),
     join(reportDir, `rating-lab-transfermarkt-coverage-by-round-${timestamp}.csv`),
     join(reportDir, `rating-lab-transfermarkt-enrichment-candidates-${timestamp}.csv`),
-    join(reportDir, `rating-lab-transfermarkt-squad-cache-${timestamp}.csv`)
+    join(reportDir, `rating-lab-transfermarkt-squad-cache-${timestamp}.csv`),
+    join(reportDir, `rating-lab-transfermarkt-season-plan-${timestamp}.csv`),
+    join(reportDir, `rating-lab-transfermarkt-identity-candidate-index-${timestamp}.csv`),
+    join(reportDir, `rating-lab-transfermarkt-identity-auto-approved-${timestamp}.csv`),
+    join(reportDir, `rating-lab-transfermarkt-identity-needs-review-${timestamp}.csv`),
+    join(reportDir, `rating-lab-transfermarkt-identity-rejected-${timestamp}.csv`)
   ];
   await writeCsv(outputs[0]!, ["worldCupYear", "totalCards", "withTransfermarktData", "withoutTransfermarktData", "coveragePercent", "newMatchesThisRun", "stillMissingHighPriority"], byYear);
   await writeCsv(outputs[1]!, ["tier", "totalCards", "withTransfermarktData", "withoutTransfermarktData", "coveragePercent"], byTier);
@@ -139,18 +166,28 @@ async function writeTransfermarktEnrichmentReports({
   await writeCsv(
     outputs[4]!,
     ["roundId", "leagueId", "worldCupYear", "transfermarktSeasonId", "cacheStatus"],
-    result.yearsScanned.flatMap((worldCupYear) =>
-      result.transfermarktSeasonsScanned.map((transfermarktSeasonId) =>
-        result.leaguesScanned.map((leagueId) => ({
-          roundId: result.roundId,
-          leagueId,
-          worldCupYear,
-          transfermarktSeasonId,
-          cacheStatus: "miss_or_refresh_needed"
-        }))
-      ).flat()
-    )
+    result.seasonPlans.map((plan) => ({
+      roundId: result.roundId,
+      leagueId: plan.competitionId,
+      worldCupYear: plan.worldCupYear,
+      transfermarktSeasonId: plan.transfermarktSeasonId,
+      cacheStatus: plan.cacheHit ? "hit" : "miss_or_refresh_needed"
+    }))
   );
+  await writeCsv(
+    outputs[5]!,
+    ["worldCupYear", "competitionId", "seasonModel", "primarySeasonId", "secondarySeasonIds", "allSeasonIds", "transfermarktSeasonId", "reason", "warnings", "cacheFile", "cacheHit"],
+    result.seasonPlans.map((plan) => ({
+      ...plan,
+      secondarySeasonIds: plan.secondarySeasonIds.join("|"),
+      allSeasonIds: plan.allSeasonIds.join("|"),
+      warnings: plan.warnings.join("|")
+    }))
+  );
+  await writeCsv(outputs[6]!, Object.keys(identityIndexRows[0] ?? { transfermarkt_player_id: "" }), identityIndexRows);
+  await writeCsv(outputs[7]!, identityMatchHeaders, result.identityMatches.filter((row) => row.status === "auto_approved"));
+  await writeCsv(outputs[8]!, identityMatchHeaders, result.identityMatches.filter((row) => row.status === "needs_review"));
+  await writeCsv(outputs[9]!, identityMatchHeaders, result.identityMatches.filter((row) => row.status === "rejected"));
   return outputs;
 }
 

@@ -633,6 +633,54 @@ describe("rating lab spike", () => {
     );
   });
 
+  it("writes Transfermarkt merge-readiness and identity status reports", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-tm-readiness-"));
+    const reports = buildReports({
+      cards: [
+        report({
+          internalRawName: "OneName",
+          debugRealName: "OneName",
+          nation: "BRA",
+          worldCupYear: 2002,
+          overall: 91,
+          tier: "ICON",
+          transfermarktIdentityConfidence: "HIGH",
+          transfermarktIdentityCoverage: true,
+          transfermarktContextCoverage: true,
+          transfermarktRatingEvidenceCoverage: false,
+          transfermarktAppliedRatingCoverage: false,
+          transfermarktPlayerId: "fixture-tm-1",
+          transfermarktRatingEvidenceReason: "real_transfermarkt_season_stats_not_imported"
+        }),
+        report({
+          internalRawName: "Fake Evidence",
+          worldCupYear: 2002,
+          overall: 88,
+          tier: "WORLD_CLASS",
+          transfermarktIdentityCoverage: true,
+          transfermarktRatingEvidenceCoverage: true,
+          evidenceSummary: "TRANSFERMARKT:HIGH:80:transfermarkt_squad_presence"
+        })
+      ],
+      sourceDir: "fixture",
+      sampleMode: "all",
+      seed: "test",
+      sourceReadiness: sourceReadinessFixture()
+    });
+
+    const paths = await writeRatingLabReports({ reports, outputDir, timestamp: "fixture" });
+    const mergeReadinessPath = paths.find((path) => path.endsWith("rating-lab-transfermarkt-merge-readiness-fixture.json"));
+    const highPriorityPath = paths.find((path) => path.endsWith("rating-lab-transfermarkt-high-priority-coverage-fixture.csv"));
+    const oneTokenPath = paths.find((path) => path.endsWith("rating-lab-transfermarkt-one-token-status-fixture.csv"));
+
+    expect(mergeReadinessPath).toBeDefined();
+    expect(highPriorityPath).toBeDefined();
+    expect(oneTokenPath).toBeDefined();
+    expect(await readFile(mergeReadinessPath!, "utf8")).toContain('"fakeRatingEvidenceCount": 1');
+    expect(await readFile(highPriorityPath!, "utf8")).toContain("rating_evidence_missing_reason");
+    expect(await readFile(oneTokenPath!, "utf8")).toContain("OneName");
+  });
+
   it("writes a static HTML preview with escaped dev-only raw text", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-preview-"));
     const summary = summaryFixture({
@@ -654,6 +702,9 @@ describe("rating lab spike", () => {
     expect(html).toContain("fixture gate");
     expect(html).toContain("Identity coverage");
     expect(html).toContain("TM Rating Evidence");
+    expect(html).toContain("High-Priority Transfermarkt Identity Status");
+    expect(html).toContain("One-Token Name Auto-Detection Status");
+    expect(html).toContain("Merge Readiness");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
   });

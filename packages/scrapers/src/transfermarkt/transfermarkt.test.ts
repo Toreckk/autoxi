@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { fbrefSkeletonStatus } from "../fbref/FbrefSkeleton.js";
 import { sofascoreSkeletonStatus } from "../sofascore/SofascoreSkeleton.js";
@@ -13,7 +14,7 @@ import { buildTransfermarktIdentityCandidateIndex, identityCandidateRowsToSquadP
 import { writeTransfermarktOverlays } from "./TransfermarktOverlayWriter.js";
 import { parseTransfermarktClubUrls, parseTransfermarktSquadPlayers } from "./TransfermarktScraper.js";
 import { applyReviewedTransfermarktApprovals } from "./TransfermarktReviewedApprovals.js";
-import { resolveWorldCupTransfermarktSeasonPlan } from "./WorldCupTransfermarktSeasonResolver.js";
+import { resolveWorldCupTransfermarktCompetitionSeasonPlan, resolveWorldCupTransfermarktSeasonPlan } from "./WorldCupTransfermarktSeasonResolver.js";
 
 describe("transfermarkt scraper tooling", () => {
   it("falls back to the round-1 league expansion plan", async () => {
@@ -64,6 +65,35 @@ describe("transfermarkt scraper tooling", () => {
     });
     expect(resolveWorldCupTransfermarktSeasonPlan(1998)).toMatchObject({ primarySeasonId: 1997, secondarySeasonIds: [1998] });
     expect(resolveWorldCupTransfermarktSeasonPlan(2022)).toMatchObject({ primarySeasonId: 2022, secondarySeasonIds: [2021] });
+  });
+
+  it("resolves competition-aware Transfermarkt season plans", () => {
+    expect(resolveWorldCupTransfermarktCompetitionSeasonPlan(2002, "ES1")).toMatchObject({
+      worldCupYear: 2002,
+      competitionId: "ES1",
+      seasonModel: "EUROPE_CROSS_YEAR",
+      primarySeasonId: 2001,
+      secondarySeasonIds: [2002],
+      allSeasonIds: [2001, 2002]
+    });
+    expect(resolveWorldCupTransfermarktCompetitionSeasonPlan(2002, "BRA1")).toMatchObject({
+      seasonModel: "CALENDAR_YEAR",
+      primarySeasonId: 2002,
+      secondarySeasonIds: [2001],
+      allSeasonIds: [2002, 2001]
+    });
+    expect(resolveWorldCupTransfermarktCompetitionSeasonPlan(2022, "ES1")).toMatchObject({
+      seasonModel: "EUROPE_CROSS_YEAR",
+      primarySeasonId: 2022,
+      secondarySeasonIds: [2021],
+      allSeasonIds: [2022, 2021]
+    });
+    expect(resolveWorldCupTransfermarktCompetitionSeasonPlan(2002, "UNVERIFIED")).toMatchObject({
+      seasonModel: "UNKNOWN",
+      primarySeasonId: 2001,
+      secondarySeasonIds: [2002],
+      warnings: ["unknown_competition_season_model:UNVERIFIED"]
+    });
   });
 
   it("fetches cache misses on non-dry runs through an injected squad provider", async () => {
@@ -192,12 +222,26 @@ describe("transfermarkt scraper tooling", () => {
       position: "ST"
     };
 
-    const matches = matchTransfermarktCandidates(
+    const missingBirthMatches = matchTransfermarktCandidates(
       [request],
       [{ playerId: "3140", name: "Ronaldo", nationalities: ["Brazil"], position: "Centre-Forward", leagueId: "ES1", season: 2001 }]
     );
+    const missingNationMatches = matchTransfermarktCandidates(
+      [request],
+      [{ playerId: "3140", name: "Ronaldo", nationalities: [], birthYear: 1976, position: "Centre-Forward", leagueId: "ES1", season: 2002 }]
+    );
 
-    expect(matches[0]?.status).toBe("needs_review");
+    expect(missingBirthMatches[0]?.status).toBe("needs_review");
+    expect(missingBirthMatches[0]?.needsReviewReason).toContain("one_token_missing_required_evidence");
+    expect(missingNationMatches[0]?.status).toBe("needs_review");
+    expect(missingNationMatches[0]?.needsReviewReason).toContain("nation");
+  });
+
+  it("does not hardcode fixture players or Transfermarkt IDs in production matcher", async () => {
+    const source = await readFile(join(dirname(fileURLToPath(import.meta.url)), "TransfermarktCandidateMatcher.ts"), "utf8");
+    for (const forbidden of ["Ronaldo", "Ronaldinho", "Romario", "Kaka", "Pele", "Zico", "Garrincha", "Deco", "Dida", "Cafu", "Rivaldo", "Miroslav Klose", "3140", "3373"]) {
+      expect(source).not.toContain(forbidden);
+    }
   });
 
   it("writes overlay players and provider links without mutating base files", async () => {

@@ -1,4 +1,8 @@
 import { readFile } from "node:fs/promises";
+import {
+  parseTransfermarktCompetitionSeasonConfig,
+  type TransfermarktCompetitionSeasonConfig
+} from "./TransfermarktCompetitionSeasonModel.js";
 
 export type LeagueExpansionRound = {
   id: string;
@@ -10,6 +14,7 @@ export type LeagueExpansionRound = {
 
 export type LeagueExpansionPlan = {
   rounds: LeagueExpansionRound[];
+  transfermarktSeasonConfig?: TransfermarktCompetitionSeasonConfig;
 };
 
 export const DEFAULT_ROUND_1: LeagueExpansionRound = {
@@ -34,7 +39,8 @@ export function roundById(plan: LeagueExpansionPlan, roundId: string): LeagueExp
 
 function parseLeagueExpansionPlan(value: unknown): LeagueExpansionPlan {
   if (!value || typeof value !== "object" || !Array.isArray((value as { rounds?: unknown }).rounds)) return { rounds: [DEFAULT_ROUND_1] };
-  const rounds = (value as { rounds: unknown[] }).rounds.flatMap((round) => {
+  const planValue = value as { rounds: unknown[] };
+  const rounds = planValue.rounds.flatMap((round) => {
     if (!round || typeof round !== "object") return [];
     const candidate = round as Partial<LeagueExpansionRound>;
     if (!candidate.id || !candidate.description || !Array.isArray(candidate.leagues)) return [];
@@ -46,5 +52,8 @@ function parseLeagueExpansionPlan(value: unknown): LeagueExpansionPlan {
       onlyStillMissing: Boolean(candidate.onlyStillMissing)
     }];
   });
-  return { rounds: rounds.length > 0 ? rounds : [DEFAULT_ROUND_1] };
+  return {
+    rounds: rounds.length > 0 ? rounds : [DEFAULT_ROUND_1],
+    transfermarktSeasonConfig: parseTransfermarktCompetitionSeasonConfig(value)
+  };
 }

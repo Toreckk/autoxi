@@ -8,11 +8,15 @@ export const IDENTITY_CANDIDATE_INDEX_HEADERS = [
   "transfermarkt_player_id",
   "canonical_name",
   "known_names",
+  "normalized_names",
   "birth_year",
   "date_of_birth",
   "nationalities",
   "positions",
+  "broad_position_family",
   "clubs_seen",
+  "competitions_seen",
+  "transfermarkt_seasons_seen",
   "leagues_seen",
   "seasons_seen",
   "world_cup_years_seen",
@@ -26,6 +30,7 @@ export const IDENTITY_CANDIDATE_INDEX_HEADERS = [
   "seen_in_transfers",
   "approved_provider_link_exists",
   "identity_confidence",
+  "evidence_families",
   "evidence_summary"
 ] as const;
 
@@ -86,7 +91,7 @@ export async function buildTransfermarktIdentityCandidateIndex(options: {
 
 export function identityCandidateRowsToSquadPlayers(rows: readonly TransfermarktIdentityCandidateIndexRow[]): TransfermarktSquadPlayer[] {
   return rows.flatMap((row) => {
-    const seasons = splitList(row.seasons_seen).map(Number).filter(Number.isFinite);
+    const seasons = splitList(row.transfermarkt_seasons_seen || row.seasons_seen).map(Number).filter(Number.isFinite);
     return seasons.map((season) => ({
       playerId: row.transfermarkt_player_id,
       name: row.canonical_name,
@@ -95,7 +100,7 @@ export function identityCandidateRowsToSquadPlayers(rows: readonly Transfermarkt
       birthYear: row.birth_year ? Number(row.birth_year) : undefined,
       position: splitList(row.positions)[0],
       clubName: splitList(row.clubs_seen)[0],
-      leagueId: splitList(row.leagues_seen)[0] ?? "",
+      leagueId: splitList(row.competitions_seen || row.leagues_seen)[0] ?? "",
       season,
       worldCupYear: splitList(row.world_cup_years_seen).map(Number).find(Number.isFinite)
     }));
@@ -255,17 +260,23 @@ function toRow(candidate: MutableIdentityCandidate): TransfermarktIdentityCandid
     candidate.seenInTransfers ? "transfers" : "",
     candidate.approvedProviderLinkExists ? "approved_provider_link" : ""
   ].filter(Boolean);
+  const competitionIds = joinSet(candidate.leaguesSeen);
+  const seasonIds = joinSet(candidate.seasonsSeen);
   return {
     transfermarkt_player_id: candidate.transfermarktPlayerId,
     canonical_name: candidate.canonicalName,
     known_names: joinSet(candidate.knownNames),
+    normalized_names: joinSet(new Set([...candidate.knownNames].map(normalizeName))),
     birth_year: candidate.birthYear,
     date_of_birth: candidate.dateOfBirth,
     nationalities: joinSet(candidate.nationalities),
     positions: joinSet(candidate.positions),
+    broad_position_family: broadPositionFamily([...candidate.positions].join(" ")),
     clubs_seen: joinSet(candidate.clubsSeen),
-    leagues_seen: joinSet(candidate.leaguesSeen),
-    seasons_seen: joinSet(candidate.seasonsSeen),
+    competitions_seen: competitionIds,
+    transfermarkt_seasons_seen: seasonIds,
+    leagues_seen: competitionIds,
+    seasons_seen: seasonIds,
     world_cup_years_seen: joinSet(candidate.worldCupYearsSeen),
     seen_in_base_players: String(candidate.seenInBasePlayers),
     seen_in_players_overlay: String(candidate.seenInPlayersOverlay),
@@ -277,8 +288,31 @@ function toRow(candidate: MutableIdentityCandidate): TransfermarktIdentityCandid
     seen_in_transfers: String(candidate.seenInTransfers),
     approved_provider_link_exists: String(candidate.approvedProviderLinkExists),
     identity_confidence: candidate.approvedProviderLinkExists ? "HIGH" : evidence.length >= 2 ? "MEDIUM" : "LOW",
+    evidence_families: evidenceFamilies(candidate).join("|"),
     evidence_summary: evidence.join("|")
   };
+}
+
+function evidenceFamilies(candidate: MutableIdentityCandidate): string[] {
+  return [
+    candidate.knownNames.size > 0 ? "name" : "",
+    candidate.nationalities.size > 0 ? "nation" : "",
+    candidate.birthYear || candidate.dateOfBirth ? "birth" : "",
+    candidate.positions.size > 0 ? "position" : "",
+    candidate.seasonsSeen.size > 0 || candidate.worldCupYearsSeen.size > 0 ? "season_context" : "",
+    candidate.clubsSeen.size > 0 ? "club_context" : "",
+    candidate.transfermarktPlayerId ? "provider_id" : "",
+    candidate.approvedProviderLinkExists ? "approved_link" : ""
+  ].filter(Boolean);
+}
+
+function broadPositionFamily(value: string): string {
+  const normalized = normalizeName(value);
+  if (/keeper|goalkeeper|\bgk\b/u.test(normalized)) return "GK";
+  if (/back|defender|defence|defense|centre back|center back|\bcb\b|\blb\b|\brb\b/u.test(normalized)) return "DEF";
+  if (/midfield|\bcm\b|\bdm\b|\bam\b/u.test(normalized)) return "MID";
+  if (/forward|striker|winger|attack|\bst\b|\bfw\b/u.test(normalized)) return "FWD";
+  return "";
 }
 
 function squadCacheFileMeta(file: string): { leagueId: string; worldCupYear: string; transfermarktSeasonId: string } {

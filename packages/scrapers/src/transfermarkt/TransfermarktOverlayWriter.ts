@@ -35,6 +35,11 @@ export const NEEDS_REVIEW_HEADERS = [
   "match_method",
   "reason",
   "evidence",
+  "evidence_families_present",
+  "evidence_families_missing",
+  "auto_approval_reason",
+  "needs_review_reason",
+  "rejected_reason",
   "review_status"
 ] as const;
 
@@ -129,7 +134,7 @@ export async function writeTransfermarktOverlays(options: {
       world_cup_year: match.request.worldCupYear,
       confidence: "HIGH",
       link_method: "transfermarkt_squad_cache",
-      evidence: match.reasons.join("|"),
+      evidence: [...match.reasons, `families:${match.evidenceFamiliesPresent.join("|")}`, match.autoApprovedReason].filter(Boolean).join("|"),
       review_status: "auto_approved"
     };
     links.set(providerLinkKey(row), row);
@@ -156,8 +161,13 @@ export async function writeTransfermarktOverlays(options: {
       candidate_season: match.candidate.season,
       match_score: match.score,
       match_method: match.reasons.join("|"),
-      reason: "candidate_requires_review",
+      reason: match.needsReviewReason || "candidate_requires_review",
       evidence: JSON.stringify(match.hardContradictions),
+      evidence_families_present: match.evidenceFamiliesPresent.join("|"),
+      evidence_families_missing: match.evidenceFamiliesMissing.join("|"),
+      auto_approval_reason: match.autoApprovedReason,
+      needs_review_reason: match.needsReviewReason,
+      rejected_reason: match.rejectedReason,
       review_status: "needs_review"
     }))
   );
