@@ -18,7 +18,7 @@ export function loadRootEnv(): void {
 
   const envPath = candidates.find((candidate) => existsSync(candidate));
   if (envPath) {
-    config({ path: envPath });
+    config({ path: envPath, quiet: true });
   }
 }
 

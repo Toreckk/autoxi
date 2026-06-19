@@ -234,11 +234,12 @@ export class CardRepository {
       );
     }
     if (query.stat && query.statMin !== undefined) {
-      conditions.push(gte(statColumns[query.stat], query.statMin));
-      if (outfieldStatKeys.has(query.stat)) {
+      const stat = query.stat as StatKey;
+      conditions.push(gte(statColumns[stat], query.statMin));
+      if (outfieldStatKeys.has(stat)) {
         conditions.push(isNotNull(playerCardOutfieldStats.cardId));
       }
-      if (goalkeeperStatKeys.has(query.stat)) {
+      if (goalkeeperStatKeys.has(stat)) {
         conditions.push(isNotNull(playerCardGoalkeeperStats.cardId));
       }
     }

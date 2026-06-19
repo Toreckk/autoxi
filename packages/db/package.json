@@ -18,17 +18,32 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run src",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx src/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "rating-lab": "tsx src/ingestion/rating-lab/cli/runRatingLab.ts",
+    "rating-lab:loop": "tsx src/ingestion/rating-lab/cli/runRatingLabLoop.ts",
+    "rating-lab:gate": "tsx src/ingestion/rating-lab/cli/runRatingGateCheck.ts",
+    "rating-lab:compare": "tsx src/ingestion/rating-lab/cli/runRatingLabCompare.ts",
+    "rating-lab:preview": "tsx src/ingestion/rating-lab/cli/runRatingLabPreview.ts",
+    "rating-lab:write-dev-preview": "tsx src/ingestion/rating-lab/cli/runRatingLabWriteDevPreview.ts",
+    "rating-lab:profile-sources": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileSources.ts",
+    "rating-lab:profile-transfermarkt": "tsx src/ingestion/rating-lab/cli/runRatingLabProfileTransfermarkt.ts",
+    "rating-lab:export-enrichment": "tsx src/ingestion/rating-lab/cli/runRatingLabExportEnrichment.ts",
+    "transfermarkt:coverage": "tsx src/ingestion/rating-lab/cli/runTransfermarktCoverage.ts",
+    "transfermarkt:enrich": "tsx src/ingestion/rating-lab/cli/runTransfermarktEnrich.ts",
+    "transfermarkt:apply-reviewed": "tsx src/ingestion/rating-lab/cli/runTransfermarktApplyReviewed.ts",
+    "transfermarkt:merge-preview": "tsx src/ingestion/rating-lab/cli/runTransfermarktMergePreview.ts"
   },
   "dependencies": {
+    "@autoxi/scrapers": "workspace:*",
     "@autoxi/domain": "workspace:*",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.7",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
