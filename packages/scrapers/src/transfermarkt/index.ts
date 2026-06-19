@@ -5,6 +5,7 @@ export * from "./TransfermarktCompetitionSeasonModel.js";
 export * from "./TransfermarktCoverageExpansion.js";
 export * from "./TransfermarktIdentityCandidateIndex.js";
 export * from "./TransfermarktOverlayWriter.js";
+export * from "./TransfermarktProfileIdentity.js";
 export * from "./TransfermarktReviewedApprovals.js";
 export * from "./TransfermarktScraper.js";
 export * from "./WorldCupTransfermarktSeasonResolver.js";

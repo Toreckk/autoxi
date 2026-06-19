@@ -1249,6 +1249,43 @@ describe("rating lab spike", () => {
     expect(await readFile(result.candidatesPath, "utf8")).toContain("TRANSFERMARKT_IMPORTANT_FJELSTUL_ONLY");
   });
 
+  it("exports all missing Transfermarkt identity cards for a target year", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "rating-lab-missing-identity-export-"));
+    const reportPath = join(outputDir, "rating-lab-rating-breakdown-fixture.csv");
+    await writeFile(
+      reportPath,
+      [
+        "cardKey,internalRawName,debugRealName,worldCupYear,nation,position,birthYear,overall,tier,primarySource,awards,sevenAZeroDelta,rating99Eligible,transfermarktIdentityCoverage,transfermarktMatchConfidence,transfermarktPlayerId,transfermarktCoverage,transfermarktSignalsMissing",
+        "fjelstul:p1:2002,Single Token Fixture,Single Token Fixture,2002,BRA,ST,1976,94,ICON,FJELSTUL_GENERATED,,7,true,false,NONE,,,",
+        "fjelstul:p2:2002,Two Token Fixture,Two Token Fixture,2002,DEU,CM,1978,88,WORLD_CLASS,FJELSTUL_GENERATED,,,false,false,NONE,,,",
+        "fjelstul:p3:2002,Linked Fixture,Linked Fixture,2002,FRA,CB,1972,90,ICON,FJELSTUL_GENERATED,,,false,true,HIGH,3003,1,",
+        "fjelstul:p4:2006,Other Year Fixture,Other Year Fixture,2006,ITA,ST,1980,92,ICON,FJELSTUL_GENERATED,,,false,false,NONE,,,"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
+    const result = await exportEnrichmentRequests({
+      outputDir,
+      outputPath: join(outputDir, "missing-player-enrichment.jsonl"),
+      reportPath,
+      transfermarktSourceDir: outputDir,
+      scope: "missing-identity",
+      provider: "transfermarkt",
+      worldCupYear: 2002,
+      maxRequests: 100,
+      dryRun: true
+    });
+    const candidates = await readFile(result.candidatesPath, "utf8");
+
+    expect(result.requestCount).toBe(2);
+    expect(candidates).toContain("TRANSFERMARKT_IDENTITY_MISSING");
+    expect(candidates).toContain("Single Token Fixture");
+    expect(candidates).toContain("Two Token Fixture");
+    expect(candidates).toContain(",1976,");
+    expect(candidates).not.toContain("Linked Fixture");
+    expect(candidates).not.toContain("Other Year Fixture");
+  });
+
   it("loads and validates the default JSON formula config with path metadata", async () => {
     const config = await loadRatingFormulaConfigFromFile();
 

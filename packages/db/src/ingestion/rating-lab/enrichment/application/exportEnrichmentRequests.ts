@@ -21,6 +21,7 @@ export const TRANSFERMARKT_ENRICHMENT_CANDIDATE_CATEGORIES = [
   "TRANSFERMARKT_MATCH_NONE",
   "TRANSFERMARKT_MATCH_MEDIUM_REVIEW",
   "TRANSFERMARKT_IMPORTANT_FJELSTUL_ONLY",
+  "TRANSFERMARKT_IDENTITY_MISSING",
   "ELITE_BENCHMARK_MISSING_EXTERNAL_ID"
 ] as const;
 
@@ -32,13 +33,23 @@ export type ExportEnrichmentOptions = {
   onlyCategory?: EnrichmentCandidateCategory;
   onlyProvider?: "transfermarkt";
   dryRun?: boolean;
-  scope?: "sample" | "full-men-world-cup" | "priority-elite" | "missing-only" | "refresh-future";
+  provider?: "transfermarkt";
+  scope?:
+    | "sample"
+    | "full-men-world-cup"
+    | "priority-elite"
+    | "missing-only"
+    | "refresh-future"
+    | "missing-identity"
+    | "high-priority-missing-identity"
+    | "all-missing-identity";
   outputPath?: string;
   outputDir?: string;
   reportPath?: string;
   transfermarktSourceDir?: string;
   refreshRatingLab?: boolean;
   localDiscoveryMaxRowsPerFile?: number;
+  worldCupYear?: number;
   force?: boolean;
   ratingLabOptions?: Partial<CliOptions>;
 };
@@ -48,10 +59,15 @@ export type EnrichmentCandidateReportRow = {
   fjelstulPlayerId: string;
   sourceName: string;
   debugRealName: string;
+  aliases: string;
   nationCode: string;
   worldCupYear: number;
   position: string;
+  broadLine: string;
   birthYear: number | null;
+  dateOfBirth: string;
+  tier: string;
+  overall: number;
   currentRating: number;
   currentRatingSource: string;
   transfermarktMatchConfidence: string;
@@ -72,10 +88,15 @@ const CANDIDATE_COLUMNS = [
   "fjelstulPlayerId",
   "sourceName",
   "debugRealName",
+  "aliases",
   "nationCode",
   "worldCupYear",
   "position",
+  "broadLine",
   "birthYear",
+  "dateOfBirth",
+  "tier",
+  "overall",
   "currentRating",
   "currentRatingSource",
   "transfermarktMatchConfidence",
@@ -155,6 +176,7 @@ function buildCandidateRows(
 ): EnrichmentCandidateReportRow[] {
   const rows: EnrichmentCandidateReportRow[] = [];
   for (const card of cards.filter((candidate) => inScope(candidate, options.scope))) {
+    if (options.worldCupYear && card.worldCupYear !== options.worldCupYear) continue;
     const evidence = card.transfermarktPlayerId
       ? localIds.find((row) => row.playerId === card.transfermarktPlayerId)
       : findLocalTransfermarktIdEvidence(localIds, card.debugRealName || card.internalRawName, card.nation);
@@ -163,7 +185,10 @@ function buildCandidateRows(
     const needsProfile = Boolean(evidence && !evidence.seenInPlayers);
     const needsValuation = Boolean(evidence && !evidence.seenInValuations);
 
+    const missingIdentity = !card.transfermarktIdentityCoverage;
+    const identityScope = options.scope === "missing-identity" || options.scope === "all-missing-identity" || options.scope === "high-priority-missing-identity";
     const category: EnrichmentCandidateCategory | null =
+      identityScope && missingIdentity ? "TRANSFERMARKT_IDENTITY_MISSING" :
       needsProfile ? "TRANSFERMARKT_PROFILE_MISSING" :
       needsValuation ? "TRANSFERMARKT_VALUATIONS_MISSING" :
       card.transfermarktMatchConfidence === "NONE" ? (important ? "TRANSFERMARKT_IMPORTANT_FJELSTUL_ONLY" : "TRANSFERMARKT_MATCH_NONE") :
@@ -203,10 +228,15 @@ function candidateRow(
     fjelstulPlayerId: fjelstulIdFromCard(card),
     sourceName: card.internalRawName,
     debugRealName: card.debugRealName || card.internalRawName,
+    aliases: "",
     nationCode: card.nation,
     worldCupYear: card.worldCupYear,
     position: card.position,
+    broadLine: broadLineForPosition(card.position),
     birthYear: card.birthYear ?? null,
+    dateOfBirth: "",
+    tier: card.tier,
+    overall: card.overall,
     currentRating: card.overall,
     currentRatingSource: card.primarySource,
     transfermarktMatchConfidence: card.transfermarktMatchConfidence,
@@ -252,7 +282,7 @@ function defaultRatingLabOptions(): CliOptions {
 }
 
 function scopeToSample(scope: ExportEnrichmentOptions["scope"]): CliOptions["sample"] {
-  return scope === "full-men-world-cup" ? "all" : "iconic-plus-random";
+  return scope === "full-men-world-cup" || scope === "all-missing-identity" ? "all" : "iconic-plus-random";
 }
 
 async function latestBreakdownPath(outputDir: string): Promise<string> {
@@ -269,6 +299,8 @@ async function readCardReportRows(path: string): Promise<RatingLabCardReport[]> 
     worldCupYear: Number(row.worldCupYear),
     overall: Number(row.overall),
     transfermarktCoverage: row.transfermarktCoverage ? Number(row.transfermarktCoverage) : null,
+    birthYear: row.birthYear ? Number(row.birthYear) : null,
+    transfermarktIdentityCoverage: row.transfermarktIdentityCoverage === "true",
     sevenAZeroDelta: row.sevenAZeroDelta ? Number(row.sevenAZeroDelta) : null,
     rating99Eligible: row.rating99Eligible === "true",
     awardMaxCapApplied: row.awardMaxCapApplied === "true",
@@ -287,6 +319,8 @@ function priority(card: RatingLabCardReport, category: EnrichmentCandidateCatego
 }
 
 function inScope(card: RatingLabCardReport, scope: ExportEnrichmentOptions["scope"]): boolean {
+  if (scope === "missing-identity" || scope === "all-missing-identity") return !card.transfermarktIdentityCoverage;
+  if (scope === "high-priority-missing-identity") return !card.transfermarktIdentityCoverage && isImportant(card);
   if (scope === "priority-elite") return isImportant(card);
   if (scope === "refresh-future") return card.worldCupYear >= 2026;
   return true;
@@ -325,4 +359,11 @@ function reasonFor(
   if (localEvidence && !localEvidence.seenInValuations) return "Transfermarkt player_id appears locally but valuation rows are missing.";
   if (card.transfermarktMatchConfidence === "NONE") return "Rating subject has no Transfermarkt match in the current local source rows.";
   return `Rating subject has weak external evidence: ${category}.`;
+}
+
+function broadLineForPosition(position: string): string {
+  if (position === "GK") return "GK";
+  if (["CB", "LB", "RB", "LWB", "RWB"].includes(position)) return "DEF";
+  if (["CDM", "CM", "CAM", "LM", "RM"].includes(position)) return "MID";
+  return "FWD";
 }

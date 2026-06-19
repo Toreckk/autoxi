@@ -12,6 +12,9 @@ export type TransfermarktMissingPlayer = {
   nation: string;
   worldCupYear: number;
   position: string;
+  tier?: string;
+  overall?: number;
+  priority?: number;
   birthYear?: number | null;
   dateOfBirth?: string | null;
   transfermarktId?: string | null;
@@ -26,6 +29,8 @@ export type TransfermarktSquadPlayer = {
   birthYear?: number;
   position?: string;
   clubName?: string;
+  profileUrl?: string;
+  profileSlug?: string;
   leagueId: string;
   season: number;
   worldCupYear?: number;

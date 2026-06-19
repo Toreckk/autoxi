@@ -1046,6 +1046,12 @@ function buildTransfermarktMergeReadiness(cards: readonly RatingLabCardReport[])
     oneTokenHighPriorityModern.length
   );
   const worldCup2002IdentityCoveragePercent = percentNumber(cards2002.filter((card) => card.transfermarktIdentityCoverage).length, cards2002.length);
+  const needsReviewBecauseNationalityMissingCount = cards.filter((card) =>
+    !card.transfermarktIdentityCoverage && /nation|nationality/iu.test(`${card.transfermarktMatchFailureReason}|${card.transfermarktSignalsMissing}`)
+  ).length;
+  const needsReviewAfterProfileEnrichmentCount = cards.filter((card) =>
+    /profile_missing_nationality|profile_identity/iu.test(`${card.transfermarktMatchFailureReason}|${card.transfermarktSignalsMissing}`)
+  ).length;
   const blockingReasons = fakeRatingEvidenceCount > 0 ? ["fakeRatingEvidenceCount must be 0"] : [];
   const warnings = [
     highPriorityModern.length > 0 && highPriorityModernIdentityCoveragePercent < 90
@@ -1056,6 +1062,12 @@ function buildTransfermarktMergeReadiness(cards: readonly RatingLabCardReport[])
       : "",
     cards2002.length > 0 && cards2002.filter((card) => card.transfermarktIdentityCoverage).length <= 1
       ? "world_cup_2002_identity_coverage_not_materially_higher_than_1_card"
+      : "",
+    needsReviewBecauseNationalityMissingCount > 0
+      ? "nationality_field_quality_below_expected_threshold"
+      : "",
+    cards.filter((card) => !card.transfermarktIdentityCoverage).length > 0
+      ? "profile_enrichment_not_confirmed_by_rating_lab_report"
       : ""
   ].filter(Boolean);
   return {
@@ -1073,6 +1085,11 @@ function buildTransfermarktMergeReadiness(cards: readonly RatingLabCardReport[])
     identityOnlyCount: cards.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length,
     ratingEvidenceCount: cards.filter((card) => card.transfermarktRatingEvidenceCoverage).length,
     appliedCount: cards.filter((card) => card.transfermarktAppliedRatingCoverage).length,
+    profileIdentityCacheCount: 0,
+    profileIdentitySuccessCount: 0,
+    profileIdentityFailureCount: 0,
+    needsReviewBecauseNationalityMissingCount,
+    needsReviewAfterProfileEnrichmentCount,
     needsReviewHighPriorityCount: highPriorityModern.filter(
       (card) => card.transfermarktIdentityCoverage && !card.transfermarktAppliedRatingCoverage && card.transfermarktRatingEvidenceReason !== "real_transfermarkt_season_stats_not_imported"
     ).length,

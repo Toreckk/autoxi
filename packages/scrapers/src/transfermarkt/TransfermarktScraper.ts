@@ -1,8 +1,13 @@
 import type { TransfermarktSquadPlayer } from "./TransfermarktCandidateMatcher.js";
 import { RateLimiter } from "../shared/RateLimiter.js";
+import type { TransfermarktProfileIdentityRow } from "./TransfermarktProfileIdentity.js";
 
 export type TransfermarktSquadProvider = {
   listSquadPlayers(leagueId: string, season: number): Promise<TransfermarktSquadPlayer[]>;
+};
+
+export type TransfermarktProfileIdentityProvider = {
+  getProfileIdentity(playerId: string, profileSlug?: string): Promise<TransfermarktProfileIdentityRow>;
 };
 
 export type TransfermarktFetch = (url: string, init: { headers: Record<string, string> }) => Promise<{
@@ -38,7 +43,7 @@ export class NoopTransfermarktScraper implements TransfermarktSquadProvider {
   }
 }
 
-export class TransfermarktWebScraper implements TransfermarktSquadProvider {
+export class TransfermarktWebScraper implements TransfermarktSquadProvider, TransfermarktProfileIdentityProvider {
   private readonly limiter: RateLimiter;
   private readonly fetchPage: TransfermarktFetch;
 
@@ -57,6 +62,12 @@ export class TransfermarktWebScraper implements TransfermarktSquadProvider {
       players.push(...parseTransfermarktSquadPlayers(squadHtml, { leagueId, season }));
     }
     return uniquePlayers(players);
+  }
+
+  async getProfileIdentity(playerId: string, profileSlug = "-"): Promise<TransfermarktProfileIdentityRow> {
+    const profileUrl = profileUrlFor(playerId, profileSlug);
+    const html = await this.get(profileUrl);
+    return parseTransfermarktProfileIdentity(html, { playerId, profileUrl, profileSlug });
   }
 
   private async get(url: string): Promise<string> {
@@ -82,6 +93,10 @@ export function competitionUrl(leagueId: string, season: number): string {
   return `https://www.transfermarkt.com/-/startseite/wettbewerb/${encodeURIComponent(leagueId)}/plus/?saison_id=${season}`;
 }
 
+export function profileUrlFor(playerId: string, profileSlug = "-"): string {
+  return `https://www.transfermarkt.com/${encodeURIComponent(profileSlug || "-")}/profil/spieler/${encodeURIComponent(playerId)}`;
+}
+
 export function parseTransfermarktClubUrls(html: string, season: number): string[] {
   const urls = new Set<string>();
   const regex = /href="([^"]*\/startseite\/verein\/\d+[^"]*)"/giu;
@@ -98,13 +113,53 @@ export function parseTransfermarktClubUrls(html: string, season: number): string
   return [...urls];
 }
 
+export function parseTransfermarktProfileIdentity(
+  html: string,
+  context: { playerId: string; profileUrl: string; profileSlug?: string; extractedAt?: string }
+): TransfermarktProfileIdentityRow {
+  const canonicalName = htmlDecode(
+    /<h1[^>]*>\s*(?:<span[^>]*>)?\s*([^<]+?)\s*(?:<\/span>)?\s*<\/h1>/isu.exec(html)?.[1] ??
+      /<meta[^>]+property="og:title"[^>]+content="([^"]+)"/iu.exec(html)?.[1] ??
+      ""
+  ).replace(/\s+-\s+.*$/u, "");
+  const profileSlug = context.profileSlug && context.profileSlug !== "-" ? context.profileSlug : slugFromProfileUrl(context.profileUrl);
+  const dateOfBirth = profileValue(html, ["Date of birth/Age", "Date of birth"]);
+  const citizenships = profileValue(html, ["Citizenship"]);
+  const countryOfBirth = profileValue(html, ["Place of birth"]).split(/\s{2,}|\|/u).at(-1)?.trim() ?? "";
+  const mainPosition = profileValue(html, ["Position"]);
+  const foot = profileValue(html, ["Foot"]);
+  const heightCm = heightToCm(profileValue(html, ["Height"]));
+  const currentClub = profileValue(html, ["Current club"]);
+  return {
+    transfermarkt_player_id: context.playerId,
+    canonical_name: canonicalName,
+    profile_slug: profileSlug,
+    profile_url: context.profileUrl,
+    date_of_birth: dateOfBirth,
+    birth_year: yearFromText(dateOfBirth),
+    country_of_birth: countryOfBirth,
+    citizenships,
+    nationalities: citizenships,
+    main_position: mainPosition,
+    alternate_positions: "",
+    foot,
+    height_cm: heightCm,
+    current_club: currentClub,
+    source: "transfermarkt_profile",
+    extracted_at: context.extractedAt ?? new Date().toISOString(),
+    cache_status: "fetched",
+    failure_reason: ""
+  };
+}
+
 export function parseTransfermarktSquadPlayers(html: string, context: { leagueId: string; season: number }): TransfermarktSquadPlayer[] {
   return html
     .split(/<tr[^>]*class="(?:odd|even)"[^>]*>/iu)
     .slice(1)
     .flatMap((row) => {
+      const profileHref = /<a[^>]+href="([^"]*\/profil\/spieler\/\d+[^"]*)"[^>]*>/isu.exec(row)?.[1] ?? "";
       const id = /\/profil\/spieler\/(\d+)/iu.exec(row)?.[1];
-      const name = htmlDecode(/<a[^>]+href="[^"]*\/profil\/spieler\/\d+"[^>]*>(.*?)<\/a>/isu.exec(row)?.[1] ?? "").trim();
+      const name = htmlDecode(/<a[^>]+href="[^"]*\/profil\/spieler\/\d+[^"]*"[^>]*>(.*?)<\/a>/isu.exec(row)?.[1] ?? "").trim();
       if (!id || !name) return [];
       const nationalities = [...row.matchAll(/<img[^>]*class="flaggenrahmen"[^>]*>/giu)]
         .flatMap((match) => imageLabel(match[0] ?? ""))
@@ -118,6 +173,8 @@ export function parseTransfermarktSquadPlayers(html: string, context: { leagueId
         nationalities,
         birthYear: birthYear ? Number(birthYear) : undefined,
         position,
+        profileUrl: profileHref ? absoluteTransfermarktUrl(htmlDecode(profileHref)) : undefined,
+        profileSlug: profileHref ? slugFromProfileUrl(`https://www.transfermarkt.com${htmlDecode(profileHref)}`) : undefined,
         leagueId: context.leagueId,
         season: context.season
       }];
@@ -138,6 +195,37 @@ function imageLabel(img: string): string[] {
   const title = /\btitle="([^"]+)"/iu.exec(img)?.[1];
   const alt = /\balt="([^"]+)"/iu.exec(img)?.[1];
   return [title, alt].filter((value): value is string => Boolean(value)).map(htmlDecode);
+}
+
+function profileValue(html: string, labels: readonly string[]): string {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const definitionMatch = new RegExp(`<span[^>]*class="data-header__label"[^>]*>\\s*${escaped}:?\\s*<\\/span>\\s*<span[^>]*class="data-header__content"[^>]*>(.*?)<\\/span>`, "isu").exec(html);
+    if (definitionMatch?.[1]) return htmlDecode(definitionMatch[1]);
+    const infoMatch = new RegExp(`<span[^>]*class="info-table__content--regular"[^>]*>\\s*${escaped}:?\\s*<\\/span>\\s*<span[^>]*class="info-table__content--bold"[^>]*>(.*?)<\\/span>`, "isu").exec(html);
+    if (infoMatch?.[1]) return htmlDecode(infoMatch[1]);
+  }
+  return "";
+}
+
+function slugFromProfileUrl(value: string): string {
+  return /transfermarkt\.com\/([^/]+)\/profil\/spieler\//iu.exec(value)?.[1] ?? "";
+}
+
+function absoluteTransfermarktUrl(value: string): string {
+  if (/^https?:\/\//iu.test(value)) return value;
+  return `https://www.transfermarkt.com/${value.replace(/^\/+/u, "")}`;
+}
+
+function yearFromText(value: string): string {
+  return /\b(18|19|20)\d{2}\b/u.exec(value)?.[0] ?? "";
+}
+
+function heightToCm(value: string): string {
+  const metric = /(\d+(?:[,.]\d+)?)\s*m\b/iu.exec(value)?.[1];
+  if (metric) return String(Math.round(Number(metric.replace(",", ".")) * 100));
+  const cm = /(\d+)\s*cm\b/iu.exec(value)?.[1];
+  return cm ?? "";
 }
 
 function htmlDecode(value: string): string {

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { readCsv, writeCsv } from "../shared/CsvWriters.js";
 import { normalizeName } from "../shared/ProviderLinks.js";
 import type { TransfermarktSquadPlayer } from "./TransfermarktCandidateMatcher.js";
+import { loadTransfermarktProfileIdentityOverlay, profileIdentityIsSuccessful } from "./TransfermarktProfileIdentity.js";
 
 export const IDENTITY_CANDIDATE_INDEX_HEADERS = [
   "transfermarkt_player_id",
@@ -31,6 +32,10 @@ export const IDENTITY_CANDIDATE_INDEX_HEADERS = [
   "approved_provider_link_exists",
   "identity_confidence",
   "evidence_families",
+  "identity_field_sources",
+  "identity_repaired_from_profile",
+  "profile_cache_status",
+  "profile_failure_reason",
   "evidence_summary"
 ] as const;
 
@@ -57,6 +62,10 @@ type MutableIdentityCandidate = {
   seenInEvents: boolean;
   seenInTransfers: boolean;
   approvedProviderLinkExists: boolean;
+  fieldSources: Map<string, Set<string>>;
+  identityRepairedFromProfile: boolean;
+  profileCacheStatus: Set<string>;
+  profileFailureReason: Set<string>;
 };
 
 export async function buildTransfermarktIdentityCandidateIndex(options: {
@@ -74,6 +83,7 @@ export async function buildTransfermarktIdentityCandidateIndex(options: {
   await addSquadCacheRows(candidates, join(overlayDir, "cache"));
   addInMemorySquadRows(candidates, options.squadRows ?? []);
   await addSquadPresenceRows(candidates, join(overlayDir, "squad_presence_overlay.csv"));
+  await addProfileIdentityRows(candidates, options.outputDir);
   if (options.includeActivityEvidence) {
     await addActivityRows(candidates, join(options.sourceDir, "appearances.csv"), "appearances");
     await addActivityRows(candidates, join(options.sourceDir, "game_lineups.csv"), "lineups");
@@ -100,6 +110,8 @@ export function identityCandidateRowsToSquadPlayers(rows: readonly Transfermarkt
       birthYear: row.birth_year ? Number(row.birth_year) : undefined,
       position: splitList(row.positions)[0],
       clubName: splitList(row.clubs_seen)[0],
+      profileUrl: "",
+      profileSlug: "",
       leagueId: splitList(row.competitions_seen || row.leagues_seen)[0] ?? "",
       season,
       worldCupYear: splitList(row.world_cup_years_seen).map(Number).find(Number.isFinite)
@@ -114,12 +126,12 @@ async function addPlayerRows(candidates: Map<string, MutableIdentityCandidate>, 
     if (!playerId || !name) continue;
     const candidate = candidateFor(candidates, playerId, name);
     candidate.knownNames.add(name);
-    candidate.dateOfBirth ||= row.date_of_birth || "";
-    candidate.birthYear ||= yearFromValue(candidate.dateOfBirth) || "";
-    addDelimited(candidate.nationalities, row.country_of_citizenship || row.country_of_birth);
-    addDelimited(candidate.positions, row.position || row.sub_position);
-    addDelimited(candidate.clubsSeen, row.current_club_name);
-    addDelimited(candidate.leaguesSeen, row.current_club_domestic_competition_id);
+    setValue(candidate, "date_of_birth", "players", row.date_of_birth || "");
+    setValue(candidate, "birth_year", "players", yearFromValue(candidate.dateOfBirth) || "");
+    addDelimited(candidate, "nationalities", "players", row.country_of_citizenship || row.country_of_birth);
+    addDelimited(candidate, "positions", "players", row.position || row.sub_position);
+    addDelimited(candidate, "clubs_seen", "players", row.current_club_name);
+    addDelimited(candidate, "competitions_seen", "players", row.current_club_domestic_competition_id);
     if (source === "base") candidate.seenInBasePlayers = true;
     else candidate.seenInPlayersOverlay = true;
   }
@@ -142,14 +154,14 @@ async function addSquadCacheRows(candidates: Map<string, MutableIdentityCandidat
       const candidate = candidateFor(candidates, playerId, name);
       candidate.seenInSquadCache = true;
       candidate.knownNames.add(name);
-      addDelimited(candidate.nationalities, row.country_of_citizenship || row.country || row.nation);
-      addDelimited(candidate.positions, row.position);
-      addDelimited(candidate.clubsSeen, row.current_club_name || row.club || row.squad);
-      addDelimited(candidate.leaguesSeen, row.league || fileMeta.leagueId);
-      candidate.birthYear ||= row.birth_year || yearFromValue(row.date_of_birth || row.dob) || "";
-      candidate.dateOfBirth ||= row.date_of_birth || row.dob || "";
-      addValue(candidate.seasonsSeen, row.season || fileMeta.transfermarktSeasonId);
-      addValue(candidate.worldCupYearsSeen, fileMeta.worldCupYear);
+      addDelimited(candidate, "nationalities", "squad_cache", row.country_of_citizenship || row.country || row.nation);
+      addDelimited(candidate, "positions", "squad_cache", row.position);
+      addDelimited(candidate, "clubs_seen", "squad_cache", row.current_club_name || row.club || row.squad);
+      addDelimited(candidate, "competitions_seen", "squad_cache", row.league || fileMeta.leagueId);
+      setValue(candidate, "birth_year", "squad_cache", row.birth_year || yearFromValue(row.date_of_birth || row.dob) || "");
+      setValue(candidate, "date_of_birth", "squad_cache", row.date_of_birth || row.dob || "");
+      addValueToSet(candidate.seasonsSeen, row.season || fileMeta.transfermarktSeasonId);
+      addValueToSet(candidate.worldCupYearsSeen, fileMeta.worldCupYear);
     }
   }
 }
@@ -159,14 +171,14 @@ function addInMemorySquadRows(candidates: Map<string, MutableIdentityCandidate>,
     const candidate = candidateFor(candidates, row.playerId, row.name);
     candidate.seenInSquadCache = true;
     candidate.knownNames.add(row.name);
-    addValues(candidate.nationalities, row.nationalities);
-    addValue(candidate.positions, row.position);
-    addValue(candidate.clubsSeen, row.clubName);
-    addValue(candidate.leaguesSeen, row.leagueId);
-    addValue(candidate.seasonsSeen, row.season);
-    addValue(candidate.worldCupYearsSeen, row.worldCupYear);
-    candidate.birthYear ||= row.birthYear ? String(row.birthYear) : "";
-    candidate.dateOfBirth ||= row.dateOfBirth ?? "";
+    addValues(candidate, "nationalities", "squad_cache", row.nationalities);
+    addValue(candidate, "positions", "squad_cache", row.position);
+    addValue(candidate, "clubs_seen", "squad_cache", row.clubName);
+    addValue(candidate, "competitions_seen", "squad_cache", row.leagueId);
+    addValueToSet(candidate.seasonsSeen, row.season);
+    addValueToSet(candidate.worldCupYearsSeen, row.worldCupYear);
+    setValue(candidate, "birth_year", "squad_cache", row.birthYear ? String(row.birthYear) : "");
+    setValue(candidate, "date_of_birth", "squad_cache", row.dateOfBirth ?? "");
   }
 }
 
@@ -177,13 +189,45 @@ async function addSquadPresenceRows(candidates: Map<string, MutableIdentityCandi
     if (!playerId || !name) continue;
     const candidate = candidateFor(candidates, playerId, name);
     candidate.seenInSquadPresenceOverlay = true;
-    addDelimited(candidate.nationalities, row.nationalities);
-    addValue(candidate.positions, row.position);
-    addValue(candidate.clubsSeen, row.club_name);
-    addValue(candidate.leaguesSeen, row.competition_id);
-    addValue(candidate.seasonsSeen, row.season_id);
-    addValue(candidate.worldCupYearsSeen, row.world_cup_year);
-    candidate.birthYear ||= row.birth_year ?? "";
+    addDelimited(candidate, "nationalities", "squad_presence_overlay", row.nationalities);
+    addValue(candidate, "positions", "squad_presence_overlay", row.position);
+    addValue(candidate, "clubs_seen", "squad_presence_overlay", row.club_name);
+    addValue(candidate, "competitions_seen", "squad_presence_overlay", row.competition_id);
+    addValueToSet(candidate.seasonsSeen, row.season_id);
+    addValueToSet(candidate.worldCupYearsSeen, row.world_cup_year);
+    setValue(candidate, "birth_year", "squad_presence_overlay", row.birth_year ?? "");
+  }
+}
+
+async function addProfileIdentityRows(candidates: Map<string, MutableIdentityCandidate>, outputDir: string): Promise<void> {
+  for (const row of await loadTransfermarktProfileIdentityOverlay(outputDir)) {
+    const playerId = row.transfermarkt_player_id;
+    const name = row.canonical_name || playerId;
+    if (!playerId || !name) continue;
+    const candidate = candidateFor(candidates, playerId, name);
+    candidate.knownNames.add(name);
+    candidate.profileCacheStatus.add(row.cache_status || "unknown");
+    if (row.failure_reason) candidate.profileFailureReason.add(row.failure_reason);
+    if (!profileIdentityIsSuccessful(row)) continue;
+    const repairedBefore = {
+      nationality: candidate.nationalities.size === 0,
+      birthYear: !candidate.birthYear,
+      dateOfBirth: !candidate.dateOfBirth,
+      position: candidate.positions.size === 0,
+      club: candidate.clubsSeen.size === 0
+    };
+    addDelimited(candidate, "nationalities", "profile_identity_overlay", row.nationalities || row.citizenships || row.country_of_birth);
+    addDelimited(candidate, "positions", "profile_identity_overlay", row.main_position || row.alternate_positions);
+    addValue(candidate, "clubs_seen", "profile_identity_overlay", row.current_club);
+    setValue(candidate, "date_of_birth", "profile_identity_overlay", row.date_of_birth);
+    setValue(candidate, "birth_year", "profile_identity_overlay", row.birth_year || yearFromValue(row.date_of_birth));
+    candidate.identityRepairedFromProfile ||= (
+      (repairedBefore.nationality && candidate.nationalities.size > 0) ||
+      (repairedBefore.birthYear && Boolean(candidate.birthYear)) ||
+      (repairedBefore.dateOfBirth && Boolean(candidate.dateOfBirth)) ||
+      (repairedBefore.position && candidate.positions.size > 0) ||
+      (repairedBefore.club && candidate.clubsSeen.size > 0)
+    );
   }
 }
 
@@ -196,9 +240,9 @@ async function addActivityRows(
     const playerId = row.player_id;
     if (!playerId) continue;
     const candidate = candidateFor(candidates, playerId, row.player_name || row.name || playerId);
-    addValue(candidate.seasonsSeen, yearFromValue(row.date || row.transfer_date));
-    addValue(candidate.clubsSeen, row.player_club_id || row.club_name || row.from_club_name || row.to_club_name);
-    addValue(candidate.leaguesSeen, row.competition_id);
+    addValueToSet(candidate.seasonsSeen, yearFromValue(row.date || row.transfer_date));
+    addValue(candidate, "clubs_seen", source, row.player_club_id || row.club_name || row.from_club_name || row.to_club_name);
+    addValue(candidate, "competitions_seen", source, row.competition_id);
     if (source === "appearances") candidate.seenInAppearances = true;
     if (source === "lineups") candidate.seenInLineups = true;
     if (source === "events") candidate.seenInEvents = true;
@@ -211,8 +255,8 @@ async function addProviderLinks(candidates: Map<string, MutableIdentityCandidate
     if (row.target_provider !== "transfermarkt" || !row.target_id) continue;
     const candidate = candidateFor(candidates, row.target_id, row.player_name || row.target_id);
     candidate.approvedProviderLinkExists = row.review_status === "auto_approved" || row.review_status === "manual_approved";
-    addValue(candidate.worldCupYearsSeen, row.world_cup_year);
-    addValue(candidate.nationalities, row.nation_code);
+    addValueToSet(candidate.worldCupYearsSeen, row.world_cup_year);
+    addValue(candidate, "nationalities", "approved_provider_link", row.nation_code);
   }
 }
 
@@ -242,7 +286,11 @@ function candidateFor(candidates: Map<string, MutableIdentityCandidate>, playerI
     seenInLineups: false,
     seenInEvents: false,
     seenInTransfers: false,
-    approvedProviderLinkExists: false
+    approvedProviderLinkExists: false,
+    fieldSources: new Map(),
+    identityRepairedFromProfile: false,
+    profileCacheStatus: new Set(),
+    profileFailureReason: new Set()
   };
   candidates.set(playerId, created);
   return created;
@@ -289,6 +337,10 @@ function toRow(candidate: MutableIdentityCandidate): TransfermarktIdentityCandid
     approved_provider_link_exists: String(candidate.approvedProviderLinkExists),
     identity_confidence: candidate.approvedProviderLinkExists ? "HIGH" : evidence.length >= 2 ? "MEDIUM" : "LOW",
     evidence_families: evidenceFamilies(candidate).join("|"),
+    identity_field_sources: fieldSourcesSummary(candidate),
+    identity_repaired_from_profile: String(candidate.identityRepairedFromProfile),
+    profile_cache_status: joinSet(candidate.profileCacheStatus),
+    profile_failure_reason: joinSet(candidate.profileFailureReason),
     evidence_summary: evidence.join("|")
   };
 }
@@ -327,17 +379,57 @@ function yearFromValue(value?: string): string {
   return match?.[0] ?? "";
 }
 
-function addDelimited(target: Set<string>, value?: string): void {
-  addValues(target, splitList(value ?? ""));
+function addDelimited(candidate: MutableIdentityCandidate, field: string, source: string, value?: string): void {
+  addValues(candidate, field, source, splitList(value ?? ""));
 }
 
-function addValues(target: Set<string>, values: readonly (string | number | undefined)[]): void {
-  for (const value of values) addValue(target, value);
+function addValues(candidate: MutableIdentityCandidate, field: string, source: string, values: readonly (string | number | undefined)[]): void {
+  for (const value of values) addValue(candidate, field, source, value);
 }
 
-function addValue(target: Set<string>, value?: string | number): void {
+function addValueToSet(target: Set<string>, value?: string | number): void {
   if (value === undefined || value === null || value === "") return;
   target.add(String(value));
+}
+
+function addValue(candidate: MutableIdentityCandidate, field: string, source: string, value?: string | number): void {
+  if (value === undefined || value === null || value === "") return;
+  const target = fieldSet(candidate, field);
+  target.add(String(value));
+  noteFieldSource(candidate, field, source);
+}
+
+function setValue(candidate: MutableIdentityCandidate, field: "birth_year" | "date_of_birth", source: string, value?: string): void {
+  if (!value) return;
+  if (field === "birth_year" && !candidate.birthYear) {
+    candidate.birthYear = value;
+    noteFieldSource(candidate, field, source);
+  }
+  if (field === "date_of_birth" && !candidate.dateOfBirth) {
+    candidate.dateOfBirth = value;
+    noteFieldSource(candidate, field, source);
+  }
+}
+
+function fieldSet(candidate: MutableIdentityCandidate, field: string): Set<string> {
+  if (field === "nationalities") return candidate.nationalities;
+  if (field === "positions") return candidate.positions;
+  if (field === "clubs_seen") return candidate.clubsSeen;
+  if (field === "competitions_seen") return candidate.leaguesSeen;
+  throw new Error(`Unknown identity field ${field}`);
+}
+
+function noteFieldSource(candidate: MutableIdentityCandidate, field: string, source: string): void {
+  const sources = candidate.fieldSources.get(field) ?? new Set<string>();
+  sources.add(source);
+  candidate.fieldSources.set(field, sources);
+}
+
+function fieldSourcesSummary(candidate: MutableIdentityCandidate): string {
+  return [...candidate.fieldSources.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, sources]) => `${field}:${joinSet(sources)}`)
+    .join("|");
 }
 
 function joinSet(values: Set<string>): string {

@@ -12,7 +12,7 @@ import { DEFAULT_ROUND_1, loadLeagueExpansionPlan } from "./TransfermarktCompeti
 import { runTransfermarktCoverageExpansion } from "./TransfermarktCoverageExpansion.js";
 import { buildTransfermarktIdentityCandidateIndex, identityCandidateRowsToSquadPlayers } from "./TransfermarktIdentityCandidateIndex.js";
 import { writeTransfermarktOverlays } from "./TransfermarktOverlayWriter.js";
-import { parseTransfermarktClubUrls, parseTransfermarktSquadPlayers } from "./TransfermarktScraper.js";
+import { parseTransfermarktClubUrls, parseTransfermarktProfileIdentity, parseTransfermarktSquadPlayers } from "./TransfermarktScraper.js";
 import { applyReviewedTransfermarktApprovals } from "./TransfermarktReviewedApprovals.js";
 import { resolveWorldCupTransfermarktCompetitionSeasonPlan, resolveWorldCupTransfermarktSeasonPlan } from "./WorldCupTransfermarktSeasonResolver.js";
 
@@ -55,6 +55,197 @@ describe("transfermarkt scraper tooling", () => {
     expect(result.cacheHits).toBe(1);
     expect(result.cacheMisses).toBe(13);
     expect(result.playersApproved).toBe(1);
+  });
+
+  it("reports squad cache field quality for missing nationality data", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoxi-scrapers-quality-"));
+    const reportDir = join(dir, "reports");
+    const sourceDir = join(dir, "sources");
+    await mkdir(reportDir, { recursive: true });
+    await writeFile(
+      join(reportDir, "candidates.csv"),
+      [
+        "ratingSubjectId,fjelstulPlayerId,sourceName,debugRealName,nationCode,worldCupYear,position,birthYear,currentRating,currentRatingSource,transfermarktMatchConfidence,transfermarktPlayerId,candidateCategory,priority,reason,localTransfermarktIdEvidence,needsTransfermarktProfile,needsTransfermarktValuations",
+        "BRA-2002-volt,fjelstul:P1,Volt,Volt,BRA,2002,ST,1976,92,GENERATED,NONE,9001,TRANSFERMARKT_IDENTITY_MISSING,95,missing,,true,false"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const cache = new ScraperCache(join(sourceDir, "transfermarkt-overlay/cache"));
+    await cache.writeSquadCache(
+      { leagueId: "ES1", season: 2001, worldCupYear: 2002 },
+      ["player_id", "name", "country_of_citizenship", "birth_year", "date_of_birth", "position", "current_club_name", "season", "league"],
+      [{ player_id: "9001", name: "Volt", country_of_citizenship: "", birth_year: "1976", date_of_birth: "", position: "Centre-Forward", current_club_name: "", season: "2001", league: "ES1" }]
+    );
+
+    const result = await runTransfermarktCoverageExpansion({
+      repoRoot: dir,
+      candidatesPath: join(reportDir, "candidates.csv"),
+      sourceDir: join(sourceDir, "transfermarkt"),
+      outputDir: sourceDir,
+      dryRun: true,
+      maxLeagues: 3
+    });
+
+    const quality = result.squadCacheFieldQuality.find((row) => row.competitionId === "ES1" && row.transfermarktSeasonId === "2001");
+    expect(quality).toMatchObject({
+      rowCount: 1,
+      nationalityPresentPercent: 0,
+      dateOfBirthPresentPercent: 0,
+      playerIdPresentPercent: 100,
+      namePresentPercent: 100
+    });
+  });
+
+  it("attempts profile repair for cached candidate IDs and writes approved links when complete", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoxi-profile-end-to-end-"));
+    const reportDir = join(dir, "reports");
+    const sourceDir = join(dir, "sources");
+    await mkdir(reportDir, { recursive: true });
+    await writeFile(
+      join(reportDir, "candidates.csv"),
+      [
+        "ratingSubjectId,fjelstulPlayerId,sourceName,debugRealName,nationCode,worldCupYear,position,birthYear,currentRating,currentRatingSource,transfermarktMatchConfidence,transfermarktPlayerId,candidateCategory,priority,reason,localTransfermarktIdEvidence,needsTransfermarktProfile,needsTransfermarktValuations",
+        "BRA-2002-volt,fjelstul:P1,Volt,Volt,BRA,2002,ST,1976,92,GENERATED,NONE,9001,TRANSFERMARKT_IDENTITY_MISSING,95,missing,,true,false"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const cache = new ScraperCache(join(sourceDir, "transfermarkt-overlay/cache"));
+    await cache.writeSquadCache(
+      { leagueId: "ES1", season: 2001, worldCupYear: 2002 },
+      ["player_id", "name", "country_of_citizenship", "birth_year", "date_of_birth", "position", "current_club_name", "season", "league"],
+      [{ player_id: "9001", name: "Volt", country_of_citizenship: "", birth_year: "1976", date_of_birth: "", position: "Centre-Forward", current_club_name: "", season: "2001", league: "ES1" }]
+    );
+
+    const result = await runTransfermarktCoverageExpansion({
+      repoRoot: dir,
+      candidatesPath: join(reportDir, "candidates.csv"),
+      sourceDir: join(sourceDir, "transfermarkt"),
+      outputDir: sourceDir,
+      dryRun: false,
+      maxLeagues: 2,
+      profileEnrich: true,
+      profileProvider: {
+        async getProfileIdentity(playerId) {
+          return {
+            transfermarkt_player_id: playerId,
+            canonical_name: "Volt",
+            profile_slug: "volt",
+            profile_url: `https://example.test/volt/profil/spieler/${playerId}`,
+            date_of_birth: "Sep 18 1976",
+            birth_year: "1976",
+            country_of_birth: "Brazil",
+            citizenships: "Brazil",
+            nationalities: "Brazil",
+            main_position: "Centre-Forward",
+            alternate_positions: "",
+            foot: "right",
+            height_cm: "182",
+            current_club: "Fixture FC",
+            source: "fixture",
+            extracted_at: "2026-01-01T00:00:00.000Z",
+            cache_status: "fetched",
+            failure_reason: ""
+          };
+        }
+      }
+    });
+
+    expect(result.profileIdentityAttempts).toContainEqual(
+      expect.objectContaining({
+        transfermarktPlayerId: "9001",
+        attempted: true,
+        status: "fetched_success",
+        missingFields: "nationality|profile_url"
+      })
+    );
+    expect(result.playersApproved).toBe(1);
+    expect(await readFile(join(sourceDir, "identity/provider_player_links.csv"), "utf8")).toContain("auto_approved");
+    expect(await readFile(join(sourceDir, "transfermarkt-overlay/profile_identity_overlay.csv"), "utf8")).toContain("Brazil");
+    expect(await readFile(join(sourceDir, "transfermarkt-overlay/cache/profiles/profile_9001.json"), "utf8")).toContain("Brazil");
+  });
+
+  it("reports a blocking error when profile enrich has repair candidates but cannot attempt profiles", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoxi-profile-blocking-"));
+    const reportDir = join(dir, "reports");
+    const sourceDir = join(dir, "sources");
+    await mkdir(reportDir, { recursive: true });
+    await writeFile(
+      join(reportDir, "candidates.csv"),
+      [
+        "ratingSubjectId,fjelstulPlayerId,sourceName,debugRealName,nationCode,worldCupYear,position,birthYear,currentRating,currentRatingSource,transfermarktMatchConfidence,transfermarktPlayerId,candidateCategory,priority,reason,localTransfermarktIdEvidence,needsTransfermarktProfile,needsTransfermarktValuations",
+        "BRA-2002-volt,fjelstul:P1,Volt,Volt,BRA,2002,ST,1976,92,GENERATED,NONE,9001,TRANSFERMARKT_IDENTITY_MISSING,95,missing,,true,false"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const cache = new ScraperCache(join(sourceDir, "transfermarkt-overlay/cache"));
+    await cache.writeSquadCache(
+      { leagueId: "ES1", season: 2001, worldCupYear: 2002 },
+      ["player_id", "name", "country_of_citizenship", "birth_year", "position", "season", "league"],
+      [{ player_id: "9001", name: "Volt", country_of_citizenship: "", birth_year: "1976", position: "Centre-Forward", season: "2001", league: "ES1" }]
+    );
+
+    const result = await runTransfermarktCoverageExpansion({
+      repoRoot: dir,
+      candidatesPath: join(reportDir, "candidates.csv"),
+      sourceDir: join(sourceDir, "transfermarkt"),
+      outputDir: sourceDir,
+      dryRun: false,
+      maxLeagues: 2,
+      profileEnrich: true
+    });
+
+    expect(result.profileRepairWorklist).toHaveLength(1);
+    expect(result.profileRepairBlockingError).toBe("profile_enrich_requested_but_no_attempts");
+    expect(result.profileIdentityAttempts[0]).toMatchObject({
+      transfermarktPlayerId: "9001",
+      attempted: false,
+      status: "skipped_profile_provider_missing",
+      reason: "configure_transfermarkt_user_agent_and_run_non_dry_profile_enrich"
+    });
+  });
+
+  it("records profile fetch failures with failure reasons", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoxi-profile-failure-"));
+    const reportDir = join(dir, "reports");
+    const sourceDir = join(dir, "sources");
+    await mkdir(reportDir, { recursive: true });
+    await writeFile(
+      join(reportDir, "candidates.csv"),
+      [
+        "ratingSubjectId,fjelstulPlayerId,sourceName,debugRealName,nationCode,worldCupYear,position,birthYear,currentRating,currentRatingSource,transfermarktMatchConfidence,transfermarktPlayerId,candidateCategory,priority,reason,localTransfermarktIdEvidence,needsTransfermarktProfile,needsTransfermarktValuations",
+        "BRA-2002-volt,fjelstul:P1,Volt,Volt,BRA,2002,ST,1976,92,GENERATED,NONE,9001,TRANSFERMARKT_IDENTITY_MISSING,95,missing,,true,false"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const cache = new ScraperCache(join(sourceDir, "transfermarkt-overlay/cache"));
+    await cache.writeSquadCache(
+      { leagueId: "ES1", season: 2001, worldCupYear: 2002 },
+      ["player_id", "name", "country_of_citizenship", "birth_year", "position", "season", "league"],
+      [{ player_id: "9001", name: "Volt", country_of_citizenship: "", birth_year: "1976", position: "Centre-Forward", season: "2001", league: "ES1" }]
+    );
+
+    const result = await runTransfermarktCoverageExpansion({
+      repoRoot: dir,
+      candidatesPath: join(reportDir, "candidates.csv"),
+      sourceDir: join(sourceDir, "transfermarkt"),
+      outputDir: sourceDir,
+      dryRun: false,
+      maxLeagues: 2,
+      profileEnrich: true,
+      profileProvider: {
+        async getProfileIdentity() {
+          throw new Error("fixture_fetch_failed");
+        }
+      }
+    });
+
+    expect(result.profileIdentityAttempts[0]).toMatchObject({
+      attempted: true,
+      status: "fetched_failed",
+      reason: "failed:fixture_fetch_failed"
+    });
+    const overlay = await readFile(join(sourceDir, "transfermarkt-overlay/profile_identity_overlay.csv"), "utf8");
+    expect(overlay).toContain("fixture_fetch_failed");
   });
 
   it("maps World Cup years to Transfermarkt season plans", () => {
@@ -142,6 +333,40 @@ describe("transfermarkt scraper tooling", () => {
     expect(clubUrls[0]).toContain("/kader/verein/131/saison_id/2002/plus/1");
     expect(clubUrls[1]).toContain("/kader/verein/418/saison_id/2002/plus/1");
     expect(players[0]).toMatchObject({ playerId: "3140", name: "Ronaldo", nationalities: ["Brazil", "Brazil"], birthYear: 1976, leagueId: "ES1" });
+  });
+
+  it("parses Transfermarkt profile identity HTML fixtures", () => {
+    const row = parseTransfermarktProfileIdentity(
+      [
+        '<meta property="og:title" content="Single Token - Player profile">',
+        '<h1><span>Single Token</span></h1>',
+        '<span class="info-table__content--regular">Date of birth/Age:</span><span class="info-table__content--bold">Sep 18, 1976 (25)</span>',
+        '<span class="info-table__content--regular">Citizenship:</span><span class="info-table__content--bold"><img title="Brazil"> Brazil</span>',
+        '<span class="info-table__content--regular">Place of birth:</span><span class="info-table__content--bold">Fixture City  Brazil</span>',
+        '<span class="info-table__content--regular">Position:</span><span class="info-table__content--bold">Centre-Forward</span>',
+        '<span class="info-table__content--regular">Foot:</span><span class="info-table__content--bold">right</span>',
+        '<span class="info-table__content--regular">Height:</span><span class="info-table__content--bold">1,82 m</span>',
+        '<span class="info-table__content--regular">Current club:</span><span class="info-table__content--bold"><a>Fixture FC</a></span>'
+      ].join(""),
+      {
+        playerId: "9001",
+        profileUrl: "https://www.transfermarkt.com/single-token/profil/spieler/9001",
+        extractedAt: "2026-01-01T00:00:00.000Z"
+      }
+    );
+
+    expect(row).toMatchObject({
+      transfermarkt_player_id: "9001",
+      canonical_name: "Single Token",
+      profile_slug: "single-token",
+      birth_year: "1976",
+      nationalities: "Brazil",
+      main_position: "Centre-Forward",
+      height_cm: "182",
+      current_club: "Fixture FC",
+      cache_status: "fetched",
+      failure_reason: ""
+    });
   });
 
   it("auto-approves unique high-confidence matches and rejects name-only matches", () => {
@@ -314,6 +539,59 @@ describe("transfermarkt scraper tooling", () => {
 
     expect(await readFile(join(dir, "transfermarkt-overlay/identity_candidate_index.csv"), "utf8")).toContain("3140");
     expect(matches[0]?.status).toBe("auto_approved");
+  });
+
+  it("repairs missing squad nationality from profile identity overlay before one-token matching", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoxi-profile-repair-"));
+    await mkdir(join(dir, "transfermarkt-overlay"), { recursive: true });
+    await writeFile(
+      join(dir, "transfermarkt-overlay/profile_identity_overlay.csv"),
+      [
+        "transfermarkt_player_id,canonical_name,profile_slug,profile_url,date_of_birth,birth_year,country_of_birth,citizenships,nationalities,main_position,alternate_positions,foot,height_cm,current_club,source,extracted_at,cache_status,failure_reason",
+        "9001,Volt,volt,https://example.test/volt/profil/spieler/9001,Sep 18 1976,1976,Brazil,Brazil,Brazil,Centre-Forward,,right,182,Fixture FC,fixture,2026-01-01T00:00:00.000Z,fetched,"
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
+    const rows = await buildTransfermarktIdentityCandidateIndex({
+      sourceDir: join(dir, "transfermarkt"),
+      outputDir: dir,
+      squadRows: [
+        {
+          playerId: "9001",
+          name: "Volt",
+          nationalities: [],
+          birthYear: 1976,
+          position: "Centre-Forward",
+          leagueId: "ES1",
+          season: 2001,
+          worldCupYear: 2002
+        }
+      ]
+    });
+    const [match] = matchTransfermarktCandidates(
+      [
+        {
+          requestKey: "transfermarkt:search:single-token-elite-fixture",
+          ratingSubjectId: "BRA-2002-volt",
+          canonicalPlayerId: "fixture:P1",
+          name: "Volt",
+          aliases: [],
+          nation: "BRA",
+          worldCupYear: 2002,
+          position: "ST"
+        }
+      ],
+      identityCandidateRowsToSquadPlayers(rows)
+    );
+
+    expect(rows[0]).toMatchObject({
+      nationalities: "Brazil",
+      identity_repaired_from_profile: "true",
+      profile_cache_status: "fetched"
+    });
+    expect(rows[0]?.identity_field_sources).toContain("nationalities:profile_identity_overlay");
+    expect(match?.status).toBe("auto_approved");
   });
 
   it("applies manually approved review rows into overlays", async () => {

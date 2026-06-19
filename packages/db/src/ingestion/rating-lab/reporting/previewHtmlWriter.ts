@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RatingLabAnomaly, RatingLabCardSnapshot, RatingLabSummary } from "../domain/types.js";
 
@@ -9,7 +9,7 @@ export type RatingLabPreviewOptions = {
 
 export async function writeRatingLabPreviewHtml({ summary, outputPath }: RatingLabPreviewOptions): Promise<string> {
   await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, renderRatingLabPreviewHtml(summary), "utf8");
+  await writeFile(outputPath, renderRatingLabPreviewHtml(summary, await latestProfileRepairDiagnostics(dirname(outputPath))), "utf8");
   return outputPath;
 }
 
@@ -17,7 +17,17 @@ export function defaultPreviewPathForReport(reportPath: string): string {
   return join(dirname(reportPath), "rating-lab-preview.html");
 }
 
-export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
+type ProfileRepairDiagnostics = {
+  profileRepairEnabled?: boolean;
+  profileRepairWorklistCount?: number;
+  profileIdentityAttemptCount?: number;
+  profileIdentityFetchAttemptedCount?: number;
+  profileIdentitySuccessCount?: number;
+  profileIdentityFailureCount?: number;
+  profileIdentityFetchSkippedCount?: number;
+};
+
+export function renderRatingLabPreviewHtml(summary: RatingLabSummary, profileRepairDiagnostics?: ProfileRepairDiagnostics): string {
   const cards = summary.cardSnapshots;
   const topByTournament = Object.values(groupBy(cards, (card) => String(card.worldCupYear))).flatMap((yearCards) =>
     [...yearCards].sort((left, right) => right.overall - left.overall).slice(0, 25)
@@ -85,7 +95,7 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
       ${metric("95+ cards", distribution?.count95Plus ?? "n/a")}
       ${metric("99 cards", distribution?.count99 ?? "n/a")}
     </section>
-    ${transfermarktCoverageSection(summary)}
+    ${transfermarktCoverageSection(summary, profileRepairDiagnostics)}
     ${sourceAvailabilitySection(summary)}
     ${distributionSection(summary)}
     ${sourceBlendSection(cards)}
@@ -113,7 +123,7 @@ export function renderRatingLabPreviewHtml(summary: RatingLabSummary): string {
 </html>`;
 }
 
-function transfermarktCoverageSection(summary: RatingLabSummary): string {
+function transfermarktCoverageSection(summary: RatingLabSummary, profileRepairDiagnostics?: ProfileRepairDiagnostics): string {
   const cards = summary.cardSnapshots;
   const identity = cards.filter((card) => card.transfermarktIdentityCoverage);
   const context = cards.filter((card) => card.transfermarktContextCoverage);
@@ -146,6 +156,7 @@ function transfermarktCoverageSection(summary: RatingLabSummary): string {
       ${metric("Missing identity", missing.length)}
       ${metric("Needs real season stats", cards.filter((card) => card.transfermarktIdentityCoverage && !card.transfermarktRatingEvidenceCoverage).length)}
     </section>
+    ${transfermarktIdentityFunnelPreview(cards, profileRepairDiagnostics)}
     <h2>High-Priority Transfermarkt Identity Status</h2>
     <section class="grid">
       ${metric("High-priority identity", `${highPriority.filter((card) => card.transfermarktIdentityCoverage).length} / ${highPriority.length} (${percent(highPriority.filter((card) => card.transfermarktIdentityCoverage).length, highPriority.length)}%)`)}
@@ -170,6 +181,75 @@ function transfermarktCoverageSection(summary: RatingLabSummary): string {
     <table><thead><tr><th>Tier</th><th>Total</th><th>Identity</th><th>Context</th><th>Rating Evidence</th><th>Applied</th></tr></thead><tbody>${byTierRows}</tbody></table>
     ${cardSection("Top Still-Missing High-Priority Players", stillMissing)}
   </section>`;
+}
+
+function transfermarktIdentityFunnelPreview(cards: readonly RatingLabCardSnapshot[], profileRepairDiagnostics?: ProfileRepairDiagnostics): string {
+  const missing = cards.filter((card) => !card.transfermarktIdentityCoverage);
+  const highPriorityMissing = missing.filter(isHighPriorityTransfermarktCard);
+  const oneTokenHighPriorityMissing = highPriorityMissing.filter((card) => isSingleTokenName(card.debugRealName ?? card.internalRawName));
+  const contextOnly = cards.filter((card) => card.transfermarktContextCoverage && !card.transfermarktRatingEvidenceCoverage);
+  const blockers = highPriorityMissing
+    .sort((left, right) => right.overall - left.overall)
+    .slice(0, 25);
+  return `<h2>Transfermarkt Identity Funnel</h2>
+    <section class="grid">
+      ${metric("Missing identity cards", missing.length)}
+      ${metric("Exported for enrichment", "see funnel report")}
+      ${metric("Found in squad cache", contextOnly.length)}
+      ${metric("Profile enriched", "see profile cache")}
+      ${metric("Auto-approved", cards.filter((card) => card.transfermarktIdentityCoverage).length)}
+      ${metric("Needs review", highPriorityMissing.length)}
+      ${metric("Still missing", missing.length)}
+    </section>
+    <h2>Profile Repair</h2>
+    <section class="grid">
+      ${metric("Profile repair enabled", String(profileRepairDiagnostics?.profileRepairEnabled ?? false))}
+      ${metric("Profile repair worklist", profileRepairDiagnostics?.profileRepairWorklistCount ?? "n/a")}
+      ${metric("Profile attempts", profileRepairDiagnostics?.profileIdentityAttemptCount ?? "n/a")}
+      ${metric("Profile successes", profileRepairDiagnostics?.profileIdentitySuccessCount ?? "n/a")}
+      ${metric("Profile failures", profileRepairDiagnostics?.profileIdentityFailureCount ?? "n/a")}
+      ${metric("Profile skipped", profileRepairDiagnostics?.profileIdentityFetchSkippedCount ?? "n/a")}
+    </section>
+    ${!profileRepairDiagnostics?.profileRepairEnabled ? listSection("Profile Repair Status", ["Profile repair was not run. Identity coverage may be limited by missing nationality/date-of-birth fields."]) : ""}
+    <h2>Top High-Priority Identity Blockers</h2>
+    ${identityBlockersTable(blockers)}
+    <h2>One-token high-priority blockers</h2>
+    ${cardSection("One-token high-priority missing identity", oneTokenHighPriorityMissing)}
+    <h2>Profile enrichment failures</h2>
+    ${listSection("Profile enrichment failures", ["See rating-lab-transfermarkt-identity-funnel-summary for profileIdentityFailureCount."])}
+    <h2>Squad cache field quality</h2>
+    ${listSection("Squad cache field quality", ["See rating-lab-transfermarkt-squad-cache-field-quality for per-cache field completeness."])}`;
+}
+
+async function latestProfileRepairDiagnostics(reportDir: string): Promise<ProfileRepairDiagnostics | undefined> {
+  const files = (await readdir(reportDir).catch(() => [])).filter((file) => file.startsWith("rating-lab-transfermarkt-identity-funnel-summary-") && file.endsWith(".json")).sort();
+  const latest = files.at(-1);
+  if (!latest) return undefined;
+  const raw = await readFile(join(reportDir, latest), "utf8").catch(() => "");
+  if (!raw) return undefined;
+  return JSON.parse(raw) as ProfileRepairDiagnostics;
+}
+
+function identityBlockersTable(cards: readonly RatingLabCardSnapshot[]): string {
+  if (cards.length === 0) return empty();
+  const rows = cards
+    .map(
+      (card) => `<tr>
+        <td>${escapeHtml(card.debugRealName ?? card.internalRawName)}</td>
+        <td>${escapeHtml(card.nation)}</td>
+        <td>${card.worldCupYear}</td>
+        <td>${escapeHtml(card.tier)}</td>
+        <td>${escapeHtml(card.position)}</td>
+        <td>${escapeHtml(card.transfermarktPlayerId ?? "")}</td>
+        <td>${escapeHtml(card.transfermarktPlayerId ? card.debugRealName ?? card.internalRawName : "")}</td>
+        <td>${escapeHtml(card.transfermarktCoverage === null ? "" : String(card.transfermarktCoverage ?? ""))}</td>
+        <td>${escapeHtml(card.transfermarktSignalsMissing ?? "")}</td>
+        <td>${escapeHtml(card.transfermarktMatchFailureReason ?? "")}</td>
+        <td>${escapeHtml(card.transfermarktPlayerId ? "import_real_transfermarkt_season_stats_or_market_values" : "run_transfermarkt_identity_enrichment")}</td>
+      </tr>`
+    )
+    .join("");
+  return `<table><thead><tr><th>Name</th><th>Nation</th><th>Year</th><th>Tier</th><th>Position</th><th>Best Candidate ID</th><th>Best Candidate Name</th><th>Best Candidate Score</th><th>Missing Fields</th><th>Needs Review Reason</th><th>Recommended Next Step</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function coverageRow(label: string, cards: readonly RatingLabCardSnapshot[]): string {
